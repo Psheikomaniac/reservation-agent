@@ -194,6 +194,39 @@ app/
 
 ---
 
+## Issue-getriebener Arbeits-Workflow (verbindlich)
+
+Jede Code-Änderung folgt diesem Ablauf – **eine Schleife pro GitHub-Issue**:
+
+1. **Issue auswählen** – das *kleinste noch offene* Issue aus `Psheikomaniac/reservation-agent` ziehen, das nicht durch andere Issues blockiert ist. Bevorzugt nach Label `foundation`, dann nach Issue-Nummer aufsteigend.
+2. **Issue lesen** – Goal, Acceptance Criteria, Technical Notes und referenziertes PRD vollständig erfassen. Bei Unklarheit: nachfragen, nicht raten.
+3. **Branch anlegen** – ein neuer Branch pro Issue, Schema:
+   - `feature/<issue-nr>-<kurz-slug>` (z. B. `feature/002-scaffold-laravel-starter`)
+   - `fix/<issue-nr>-...`, `docs/<issue-nr>-...`, `refactor/<issue-nr>-...` analog
+4. **Umsetzen** – streng nach den Acceptance Criteria. Bestehende Patterns fortführen, keine neuen einführen. So gut wie möglich – Lücken transparent machen, nicht kaschieren.
+5. **Testen** – passende Pest-Tests (Unit + Feature) schreiben oder erweitern. `composer test`, `./vendor/bin/pint --test`, `npm run lint`, `npm run format:check` müssen grün sein.
+6. **Commit** – atomare Commits in Imperativ-Englisch, jede Commit-Message referenziert das Issue (`Refs #<nr>` oder `Closes #<nr>` beim letzten Commit der Schleife).
+7. **Push** – Branch zum Remote pushen.
+8. **Pull Request** – PR gegen `main` erstellen via `gh pr create`. Titel: kurz und Issue-Nummer enthalten. Body:
+   - `## Summary` – Was wurde umgesetzt (Bezug auf Acceptance Criteria)
+   - `## Why` – Kontext aus Issue/PRD
+   - `Closes #<nr>` als letzte Zeile, damit das Issue beim Merge automatisch geschlossen wird
+   - `## Test plan` – Bullet-Liste der ausgeführten Checks
+9. **Code Review** – Selbst-Review oder Claude-Review nach den Kriterien aus `/Users/private/CLAUDE.md` § 7. Gefundene Findings als PR-Kommentare festhalten und falls kritisch direkt fixen, dann erneut reviewen.
+10. **Issue-Kommentar** – nach Push & PR ein abschließender Kommentar am Issue via `gh issue comment <nr>`:
+    - Link zum PR
+    - Stichpunktliste der erledigten Acceptance Criteria
+    - Offene Punkte / Folge-Issues, falls vorhanden
+11. **Erst dann das nächste Issue ziehen** – niemals zwei Issues parallel auf demselben Branch.
+
+### Begleitregeln
+
+- **Niemals** auf `main` direkt committen – jede Änderung läuft über PR.
+- **Niemals** mehrere Issues in einem PR bündeln – ein Issue, ein PR.
+- Wenn ein Issue zu groß wirkt: Kommentar am Issue mit Vorschlag zur Aufteilung, dann auf Bestätigung warten.
+- Bei blockierenden Abhängigkeiten (Issue X braucht Y): Kommentar am Issue, das blockierende Issue zuerst ziehen.
+- Bei zerstörerischen Aktionen (Force-Push, Branch-Löschung, Migrations-Reset): vorher fragen.
+
 ## Git-Workflow
 
 ### Branch-Naming
