@@ -16,6 +16,12 @@
 /storage/pail
 /auth.json
 
+# Local SQLite (developer artefact, not source)
+/database/*.sqlite
+/database/*.sqlite-journal
+/database/*.sqlite-shm
+/database/*.sqlite-wal
+
 # Node / Frontend
 /node_modules
 /public/build
