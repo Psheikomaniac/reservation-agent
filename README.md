@@ -146,6 +146,24 @@ reservation-agent/
 
 ---
 
+## Branch-Strategie
+
+```
+main   ──●─────────────●─────────  stabil, nur Release-Bündel
+          \           /
+dev     ───●──●──●──●─────────────  Integrations-Branch (hier wird gearbeitet)
+              \  \  \
+               feature/<nr>-…       ein Branch pro GitHub-Issue
+```
+
+- **`main`** bleibt stabil und wird nur per Release-PR aus `dev` aktualisiert (nach expliziter Freigabe).
+- **`dev`** ist der laufende Integrations-Branch. Alle Issue-Branches werden aus `dev` abgeleitet und dorthin zurückgemerged.
+- Pro GitHub-Issue ein kurzlebiger Branch (`feature/<nr>-…`, `fix/<nr>-…`, `docs/<nr>-…`, `refactor/<nr>-…`), der per PR gegen `dev` gemerged und anschließend gelöscht wird.
+
+Details und der vollständige Issue-Workflow stehen in [`CLAUDE.md`](CLAUDE.md).
+
+---
+
 ## Status
 
 - ✅ Konzept & PRDs (V1.0)

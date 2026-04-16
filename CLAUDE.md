@@ -194,6 +194,70 @@ app/
 
 ---
 
+## Branch-Strategie (verbindlich)
+
+Das Repository nutzt **zwei langlebige Branches** und kurzlebige Issue-Branches:
+
+```
+main   ──●─────────────────────●─────────  (stabil, nur „Release-Bündel")
+          \                   /
+dev     ───●──●──●──●──●──●──●─────────── (Integrations-Branch, hier wird gearbeitet)
+              \  \  \  \
+               feature/<nr>-… (kurzlebig, ein Branch pro Issue)
+```
+
+- **`main`** – immer eine stabile, lauffähige Version. **Niemals direkt committen, niemals direkt aus Issue-Branches mergen.** `main` wird ausschließlich aktualisiert, wenn `dev` eine sinnvoll geschnürte Menge an Features (z. B. ein abgeschlossener PRD oder eine definierte Release-Welle) erreicht hat. Dieser Schritt erfolgt **nur nach expliziter Freigabe** durch den Repo-Owner.
+- **`dev`** – der laufende Integrations-Branch. Alle Issue-Branches gehen **von `dev` ab** und werden **nach `dev` zurückgemerged**. `dev` ist die Single Source of Truth für „was ist gerade im Bau".
+- **`feature/<nr>-…` / `fix/<nr>-…` / `docs/<nr>-…` / `refactor/<nr>-…`** – ein Branch pro GitHub-Issue, wird **immer aus aktuellem `dev`** abgeleitet. Lebensdauer: vom Issue-Start bis zum PR-Merge nach `dev`. Danach lokal und remote löschen.
+
+### Wann geht etwas nach `main`?
+
+`dev` → `main` wird als eigener PR mit dem Titel `Release: <kurz-bezeichnung>` erstellt. Trigger:
+- Ein vollständiger PRD ist auf `dev` durchimplementiert, getestet und reviewed
+- Oder eine definierte Anzahl zusammenhängender Features ist auf `dev` grün
+- Owner gibt explizit das Release frei
+
+Bis dahin bleibt `main` **unangetastet**.
+
+## Issue-getriebener Arbeits-Workflow (verbindlich)
+
+Jede Code-Änderung folgt diesem Ablauf – **eine Schleife pro GitHub-Issue**:
+
+1. **Issue auswählen** – das *kleinste noch offene* Issue aus `Psheikomaniac/reservation-agent` ziehen, das nicht durch andere Issues blockiert ist. Bevorzugt nach Label `foundation`, dann nach Issue-Nummer aufsteigend.
+2. **Issue lesen** – Goal, Acceptance Criteria, Technical Notes und referenziertes PRD vollständig erfassen. Bei Unklarheit: nachfragen, nicht raten.
+3. **Branch anlegen – aus aktuellem `dev`**:
+   ```bash
+   git checkout dev && git pull --ff-only origin dev
+   git checkout -b feature/<issue-nr>-<kurz-slug>
+   ```
+   Naming: `feature/<nr>-…`, `fix/<nr>-…`, `docs/<nr>-…`, `refactor/<nr>-…`.
+4. **Umsetzen** – streng nach den Acceptance Criteria. Bestehende Patterns fortführen, keine neuen einführen. So gut wie möglich – Lücken transparent machen, nicht kaschieren.
+5. **Testen** – passende Pest-Tests (Unit + Feature) schreiben oder erweitern. `composer test`, `./vendor/bin/pint --test`, `npm run lint`, `npm run format:check` müssen grün sein.
+6. **Commit** – atomare Commits in Imperativ-Englisch, jede Commit-Message referenziert das Issue (`Refs #<nr>` oder `Closes #<nr>` beim letzten Commit der Schleife).
+7. **Push** – Branch zum Remote pushen.
+8. **Pull Request** – PR **gegen `dev`** (nicht `main`!) erstellen via `gh pr create --base dev`. Titel: kurz und Issue-Nummer enthalten. Body:
+   - `## Summary` – Was wurde umgesetzt (Bezug auf Acceptance Criteria)
+   - `## Why` – Kontext aus Issue/PRD
+   - `Closes #<nr>` als letzte Zeile, damit das Issue beim Merge automatisch geschlossen wird
+   - `## Test plan` – Bullet-Liste der ausgeführten Checks
+9. **Code Review** – Selbst-Review oder Claude-Review nach den Kriterien aus `/Users/private/CLAUDE.md` § 7. Gefundene Findings als PR-Kommentare festhalten und falls kritisch direkt fixen, dann erneut reviewen.
+10. **Merge nach `dev`** – sobald Review sauber und CI grün, PR nach `dev` mergen. Issue-Branch lokal und remote löschen.
+11. **Issue-Kommentar** – nach Merge ein abschließender Kommentar am Issue via `gh issue comment <nr>`:
+    - Link zum PR
+    - Stichpunktliste der erledigten Acceptance Criteria
+    - Offene Punkte / Folge-Issues, falls vorhanden
+12. **Erst dann das nächste Issue ziehen** – niemals zwei Issues parallel auf demselben Branch.
+
+### Begleitregeln
+
+- **Niemals** auf `main` oder `dev` direkt committen – jede Änderung läuft über PR.
+- **Niemals** Issue-Branches direkt nach `main` mergen – Zwischenstation ist immer `dev`.
+- **Niemals** mehrere Issues in einem PR bündeln – ein Issue, ein PR.
+- Wenn ein Issue zu groß wirkt: Kommentar am Issue mit Vorschlag zur Aufteilung, dann auf Bestätigung warten.
+- Bei blockierenden Abhängigkeiten (Issue X braucht Y): Kommentar am Issue, das blockierende Issue zuerst ziehen.
+- Bei zerstörerischen Aktionen (Force-Push, Branch-Löschung auf `main`/`dev`, Migrations-Reset): vorher fragen.
+- `dev` → `main` ist ein **expliziter Release-Schritt** und braucht Freigabe.
+
 ## Git-Workflow
 
 ### Branch-Naming
