@@ -1,5 +1,35 @@
+# Editor / OS
 .DS_Store
 .idea/
 .vscode/
 .claude/
+.fleet/
+.nova/
+.zed/
+
+# PHP / Laravel
+/vendor
+/.phpunit.cache
+/.phpunit.result.cache
+/.phpactor.json
+/storage/*.key
+/storage/pail
+/auth.json
+
+# Node / Frontend
+/node_modules
+/public/build
+/public/hot
+/public/storage
+npm-debug.log
+yarn-error.log
+
+# Env
+.env
+.env.backup
+.env.production
+
+# Misc
 *.log
+Homestead.json
+Homestead.yaml
