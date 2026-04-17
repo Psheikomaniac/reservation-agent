@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Scopes\RestaurantScope;
 use Database\Factories\FailedEmailImportFactory;
+use Illuminate\Database\Eloquent\Attributes\ScopedBy;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+#[ScopedBy(RestaurantScope::class)]
 class FailedEmailImport extends Model
 {
     /** @use HasFactory<FailedEmailImportFactory> */
