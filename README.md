@@ -1,5 +1,7 @@
 # reservation-agent – KI-gestütztes Reservierungssystem für die Gastronomie V1.0
 
+[![CI](https://github.com/Psheikomaniac/reservation-agent/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/Psheikomaniac/reservation-agent/actions/workflows/ci.yml)
+
 Ein zentrales Dashboard, das Reservierungsanfragen aus mehreren Kanälen bündelt und mit KI-Unterstützung beantwortet. **Zielgruppe:** inhabergeführte Restaurants und kleine Ketten, die Reservierungen aktuell manuell über mehrere Quellen bearbeiten.
 
 ---

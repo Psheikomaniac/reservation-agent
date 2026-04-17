@@ -1,0 +1,124 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - dev
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, xml, sqlite3, pdo_sqlite
+          tools: composer:v2
+          coverage: none
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache/files
+          key: composer-${{ matrix.php }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ matrix.php }}-
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Laravel Pint (style check)
+        run: ./vendor/bin/pint --test
+
+      - name: Pest tests
+        run: php artisan test
+
+  frontend:
+    name: Frontend (Node 20)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: ESLint
+        run: npm run lint:check
+
+      - name: Prettier
+        run: npm run format:check
+
+      - name: Vite build
+        run: npm run build
+
+  ziggy-drift:
+    name: Ziggy drift check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, xml, sqlite3, pdo_sqlite
+          tools: composer:v2
+          coverage: none
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Detect committed Ziggy artefact
+        id: ziggy
+        run: |
+          if [ -f resources/js/ziggy.js ] || [ -f resources/js/ziggy.d.ts ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No committed Ziggy artefact (resources/js/ziggy.js / ziggy.d.ts). Drift check skipped; re-enabled automatically once #88 lands."
+          fi
+
+      - name: Regenerate Ziggy JS
+        if: steps.ziggy.outputs.present == 'true' && hashFiles('resources/js/ziggy.js') != ''
+        run: php artisan ziggy:generate resources/js/ziggy.js
+
+      - name: Regenerate Ziggy types
+        if: steps.ziggy.outputs.present == 'true' && hashFiles('resources/js/ziggy.d.ts') != ''
+        run: php artisan ziggy:generate --types-only resources/js/ziggy.d.ts
+
+      - name: Fail on drift
+        if: steps.ziggy.outputs.present == 'true'
+        run: |
+          if ! git diff --exit-code -- resources/js/ziggy.js resources/js/ziggy.d.ts 2>/dev/null; then
+            echo "::error::Committed Ziggy artefact is stale. Run 'php artisan ziggy:generate' locally and commit the result."
+            exit 1
+          fi
