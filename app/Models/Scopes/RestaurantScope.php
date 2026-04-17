@@ -21,7 +21,7 @@ final class RestaurantScope implements Scope
         $restaurantId = Auth::user()?->restaurant_id;
 
         if ($restaurantId === null) {
-            $builder->whereRaw('1 = 0');
+            $builder->whereIn($model->qualifyColumn($model->getKeyName()), []);
 
             return;
         }
