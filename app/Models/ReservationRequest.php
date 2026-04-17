@@ -73,6 +73,6 @@ class ReservationRequest extends Model
      */
     public function latestReply(): HasOne
     {
-        return $this->hasOne(ReservationReply::class)->latestOfMany();
+        return $this->hasOne(ReservationReply::class)->latestOfMany('created_at');
     }
 }

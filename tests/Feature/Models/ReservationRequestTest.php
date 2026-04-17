@@ -4,6 +4,7 @@ namespace Tests\Feature\Models;
 
 use App\Enums\ReservationSource;
 use App\Enums\ReservationStatus;
+use App\Models\ReservationReply;
 use App\Models\ReservationRequest;
 use App\Models\Restaurant;
 use Illuminate\Database\QueryException;
@@ -161,5 +162,38 @@ class ReservationRequestTest extends TestCase
 
         $this->assertSame($restaurant->id, $request->restaurant->id);
         $this->assertSame('Bella Italia', $request->restaurant->name);
+    }
+
+    public function test_replies_relation_returns_all_attached_replies(): void
+    {
+        $request = ReservationRequest::factory()->create();
+        $otherRequest = ReservationRequest::factory()->create();
+
+        ReservationReply::factory()->forReservationRequest($request)->count(3)->create();
+        ReservationReply::factory()->forReservationRequest($otherRequest)->create();
+
+        $this->assertCount(3, $request->replies);
+        $this->assertCount(1, $otherRequest->replies);
+    }
+
+    public function test_latest_reply_returns_the_most_recently_created_reply(): void
+    {
+        $request = ReservationRequest::factory()->create();
+
+        ReservationReply::factory()->forReservationRequest($request)->create([
+            'body' => 'First draft',
+            'created_at' => now()->subHours(2),
+        ]);
+        $newest = ReservationReply::factory()->forReservationRequest($request)->create([
+            'body' => 'Latest revision',
+            'created_at' => now(),
+        ]);
+        ReservationReply::factory()->forReservationRequest($request)->create([
+            'body' => 'Middle draft',
+            'created_at' => now()->subHour(),
+        ]);
+
+        $this->assertSame($newest->id, $request->latestReply->id);
+        $this->assertSame('Latest revision', $request->latestReply->body);
     }
 }
