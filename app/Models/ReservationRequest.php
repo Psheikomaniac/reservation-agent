@@ -4,13 +4,16 @@ namespace App\Models;
 
 use App\Enums\ReservationSource;
 use App\Enums\ReservationStatus;
+use App\Models\Scopes\RestaurantScope;
 use Database\Factories\ReservationRequestFactory;
+use Illuminate\Database\Eloquent\Attributes\ScopedBy;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
+#[ScopedBy(RestaurantScope::class)]
 class ReservationRequest extends Model
 {
     /** @use HasFactory<ReservationRequestFactory> */
