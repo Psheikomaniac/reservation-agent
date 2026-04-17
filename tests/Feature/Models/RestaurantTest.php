@@ -81,4 +81,27 @@ class RestaurantTest extends TestCase
 
         $this->assertArrayNotHasKey('imap_password', $restaurant->toArray());
     }
+
+    public function test_timezone_defaults_to_europe_berlin_when_not_provided(): void
+    {
+        DB::table('restaurants')->insert([
+            'name' => 'Test Restaurant',
+            'slug' => 'test-restaurant',
+            'capacity' => 20,
+            'opening_hours' => json_encode([]),
+            'tonality' => Tonality::Casual->value,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->assertSame('Europe/Berlin', Restaurant::query()->sole()->timezone);
+    }
+
+    public function test_null_imap_password_is_handled_gracefully(): void
+    {
+        $restaurant = Restaurant::factory()->create(['imap_password' => null]);
+
+        $this->assertNull($restaurant->fresh()->imap_password);
+        $this->assertNull(DB::table('restaurants')->where('id', $restaurant->id)->value('imap_password'));
+    }
 }
