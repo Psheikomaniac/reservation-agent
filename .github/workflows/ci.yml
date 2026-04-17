@@ -45,6 +45,18 @@ jobs:
           cp .env.example .env
           php artisan key:generate
 
+      - name: Setup Node (for Vite manifest)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build Vite assets (needed by blade @vite in feature tests)
+        run: npm run build
+
       - name: Laravel Pint (style check)
         run: ./vendor/bin/pint --test
 
@@ -84,7 +96,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3'
+          php-version: '8.4'
           extensions: mbstring, xml, sqlite3, pdo_sqlite
           tools: composer:v2
           coverage: none
