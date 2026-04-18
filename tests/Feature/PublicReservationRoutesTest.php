@@ -68,4 +68,19 @@ class PublicReservationRoutesTest extends TestCase
 
         $this->post($url)->assertStatus(429);
     }
+
+    public function test_throttled_inertia_request_redirects_back_with_throttle_error(): void
+    {
+        $restaurant = Restaurant::factory()->create(['slug' => 'demo']);
+        $url = route('public.reservations.store', $restaurant);
+
+        for ($i = 0; $i < 10; $i++) {
+            $this->post($url)->assertRedirect();
+        }
+
+        $this->withHeaders(['X-Inertia' => 'true'])
+            ->post($url)
+            ->assertRedirect()
+            ->assertSessionHasErrors('throttle');
+    }
 }
