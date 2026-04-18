@@ -58,6 +58,14 @@ const submit = () => {
         <Head :title="`Reservierung – ${restaurant.name}`" />
 
         <form @submit.prevent="submit" class="flex flex-col gap-6">
+            <div
+                v-if="form.errors.throttle"
+                role="alert"
+                class="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
+            >
+                {{ form.errors.throttle }}
+            </div>
+
             <div class="grid gap-2">
                 <Label for="guest_name">Name</Label>
                 <Input id="guest_name" type="text" required autocomplete="name" autofocus v-model="form.guest_name" placeholder="Vor- und Nachname" />
