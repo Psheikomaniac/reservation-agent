@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\PublicReservationController;
 use App\Http\Controllers\ReservationRequestController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -16,6 +17,16 @@ Route::get('reservations/{reservation}', [ReservationRequestController::class, '
     ->whereNumber('reservation')
     ->middleware(['auth', 'verified'])
     ->name('reservations.show');
+
+Route::get('r/{restaurant:slug}/reservations', [PublicReservationController::class, 'create'])
+    ->name('public.reservations.create');
+
+Route::post('r/{restaurant:slug}/reservations', [PublicReservationController::class, 'store'])
+    ->middleware('throttle:10,1')
+    ->name('public.reservations.store');
+
+Route::get('r/{restaurant:slug}/reservations/thanks', [PublicReservationController::class, 'thanks'])
+    ->name('public.reservations.thanks');
 
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
