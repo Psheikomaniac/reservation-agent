@@ -15,6 +15,7 @@ const props = defineProps<{
         slug: string;
         tonality: Tonality;
     };
+    maxPartySize: number;
 }>();
 
 const greetings: Record<Tonality, string> = {
@@ -36,7 +37,7 @@ const form = useForm({
     website: '',
 });
 
-const partySizes = Array.from({ length: 20 }, (_, i) => i + 1);
+const partySizes = computed(() => Array.from({ length: props.maxPartySize }, (_, i) => i + 1));
 
 const submit = () => {
     form.transform((data) => ({
