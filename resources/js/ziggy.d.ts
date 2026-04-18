@@ -9,6 +9,27 @@ declare module 'ziggy-js' {
             "required": true
         }
     ],
+    "public.reservations.create": [
+        {
+            "name": "restaurant",
+            "required": true,
+            "binding": "slug"
+        }
+    ],
+    "public.reservations.store": [
+        {
+            "name": "restaurant",
+            "required": true,
+            "binding": "slug"
+        }
+    ],
+    "public.reservations.thanks": [
+        {
+            "name": "restaurant",
+            "required": true,
+            "binding": "slug"
+        }
+    ],
     "profile.edit": [],
     "profile.update": [],
     "profile.destroy": [],
