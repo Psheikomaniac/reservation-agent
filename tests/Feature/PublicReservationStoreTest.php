@@ -140,7 +140,7 @@ class PublicReservationStoreTest extends TestCase
         $this->get(route('public.reservations.thanks', $restaurant))
             ->assertOk()
             ->assertInertia(fn (AssertableInertia $page) => $page
-                ->component('Public/Thanks', false)
+                ->component('Public/Thanks')
                 ->where('restaurant.name', 'Osteria Luna')
             );
     }
