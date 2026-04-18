@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ReservationRequestController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -10,6 +11,11 @@ Route::get('/', function () {
 Route::get('dashboard', function () {
     return Inertia::render('Dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
+
+Route::get('reservations/{reservation}', [ReservationRequestController::class, 'show'])
+    ->whereNumber('reservation')
+    ->middleware(['auth', 'verified'])
+    ->name('reservations.show');
 
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';

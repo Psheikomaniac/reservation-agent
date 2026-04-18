@@ -3,6 +3,12 @@ declare module 'ziggy-js' {
   interface RouteList {
     "home": [],
     "dashboard": [],
+    "reservations.show": [
+        {
+            "name": "reservation",
+            "required": true
+        }
+    ],
     "profile.edit": [],
     "profile.update": [],
     "profile.destroy": [],
