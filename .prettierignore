@@ -1,1 +1,5 @@
 resources/js/components/ui/*
+
+# Ziggy generated artefacts — regenerated via `php artisan ziggy:generate`.
+resources/js/ziggy.js
+resources/js/ziggy.d.ts
