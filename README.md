@@ -80,6 +80,18 @@ php artisan migrate --seed
 composer run dev
 ```
 
+### Ziggy (Route-Helper für TypeScript)
+
+Route-Namen aus `routes/web.php` werden per `tightenco/ziggy` ins Frontend gespiegelt. Die Laufzeit-Daten liefert die Blade-Direktive `@routes` (in `resources/views/app.blade.php`). Für TypeScript-Autocomplete wird zusätzlich `resources/js/ziggy.d.ts` committed.
+
+Nach dem Anlegen oder Umbenennen von Routes:
+
+```bash
+php artisan ziggy:generate --types-only resources/js/ziggy.d.ts
+```
+
+Die CI (`ziggy-drift`-Job) schlägt fehl, wenn die committete Datei veraltet ist.
+
 Erforderliche Umgebungsvariablen (Details in [PRD-001](docs/PRD-001-project-foundation.md)):
 
 ```env
