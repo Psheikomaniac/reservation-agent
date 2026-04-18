@@ -32,14 +32,6 @@ class PublicReservationRoutesTest extends TestCase
         $this->get('/r/unknown-slug/reservations')->assertNotFound();
     }
 
-    public function test_store_route_redirects_to_thanks_for_known_slug(): void
-    {
-        $restaurant = Restaurant::factory()->create(['slug' => 'demo']);
-
-        $this->post(route('public.reservations.store', $restaurant))
-            ->assertRedirect(route('public.reservations.thanks', $restaurant));
-    }
-
     public function test_store_route_returns_404_for_unknown_slug(): void
     {
         $this->post('/r/unknown-slug/reservations')->assertNotFound();

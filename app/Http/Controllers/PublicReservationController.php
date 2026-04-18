@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreReservationRequest;
 use App\Models\Restaurant;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -21,7 +22,7 @@ final class PublicReservationController extends Controller
         ]);
     }
 
-    public function store(Restaurant $restaurant): RedirectResponse
+    public function store(StoreReservationRequest $request, Restaurant $restaurant): RedirectResponse
     {
         return redirect()->route('public.reservations.thanks', $restaurant);
     }
