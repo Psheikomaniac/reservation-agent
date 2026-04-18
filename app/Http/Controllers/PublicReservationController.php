@@ -10,8 +10,8 @@ use App\Events\ReservationRequestReceived;
 use App\Http\Requests\StoreReservationRequest;
 use App\Models\ReservationRequest;
 use App\Models\Restaurant;
+use App\Support\Timezone;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Carbon;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -44,7 +44,7 @@ final class PublicReservationController extends Controller
             'guest_email' => $validated['guest_email'],
             'guest_phone' => $validated['guest_phone'] ?? null,
             'party_size' => $validated['party_size'],
-            'desired_at' => Carbon::parse($validated['desired_at'], $restaurant->timezone)->utc(),
+            'desired_at' => Timezone::localToUtc($validated['desired_at'], $restaurant->timezone),
             'message' => $validated['message'] ?? null,
             'raw_payload' => $validated,
         ]);
