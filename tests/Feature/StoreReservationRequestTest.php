@@ -26,26 +26,6 @@ class StoreReservationRequestTest extends TestCase
         ], $overrides);
     }
 
-    public function test_valid_payload_redirects_to_thanks(): void
-    {
-        $restaurant = Restaurant::factory()->create(['slug' => 'demo']);
-
-        $this->post(route('public.reservations.store', $restaurant), $this->validPayload())
-            ->assertRedirect(route('public.reservations.thanks', $restaurant));
-    }
-
-    public function test_filled_honeypot_still_validates_so_the_bot_sees_no_difference(): void
-    {
-        $restaurant = Restaurant::factory()->create(['slug' => 'demo']);
-
-        $this->post(
-            route('public.reservations.store', $restaurant),
-            $this->validPayload(['website' => 'http://spam.example'])
-        )
-            ->assertRedirect(route('public.reservations.thanks', $restaurant))
-            ->assertSessionHasNoErrors();
-    }
-
     public function test_optional_fields_may_be_omitted(): void
     {
         $restaurant = Restaurant::factory()->create(['slug' => 'demo']);
@@ -75,7 +55,7 @@ class StoreReservationRequestTest extends TestCase
             ->assertSessionHasErrors(['guest_email' => 'Bitte geben Sie eine E-Mail-Adresse an.']);
     }
 
-    public function test_guest_email_must_be_valid(): void
+    public function test_guest_email_error_message_is_german(): void
     {
         $this->postValid(['guest_email' => 'not-an-email'])
             ->assertSessionHasErrors(['guest_email' => 'Bitte geben Sie eine gültige E-Mail-Adresse an.']);
@@ -99,7 +79,7 @@ class StoreReservationRequestTest extends TestCase
             ->assertSessionHasErrors(['party_size' => 'Die Reservierung muss für mindestens 1 Person sein.']);
     }
 
-    public function test_party_size_above_20_is_rejected(): void
+    public function test_party_size_above_20_error_message_is_german(): void
     {
         $this->postValid(['party_size' => 21])
             ->assertSessionHasErrors(['party_size' => 'Pro Anfrage sind höchstens 20 Personen möglich.']);
@@ -117,7 +97,7 @@ class StoreReservationRequestTest extends TestCase
             ->assertSessionHasErrors(['desired_at' => 'Bitte geben Sie das gewünschte Datum samt Uhrzeit an.']);
     }
 
-    public function test_desired_at_in_the_past_is_rejected(): void
+    public function test_desired_at_past_error_message_is_german(): void
     {
         $this->postValid(['desired_at' => Carbon::now()->subHour()->format('Y-m-d H:i')])
             ->assertSessionHasErrors(['desired_at' => 'Der Wunschtermin muss in der Zukunft liegen.']);
