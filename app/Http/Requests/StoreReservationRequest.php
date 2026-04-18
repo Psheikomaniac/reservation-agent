@@ -4,14 +4,43 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Models\Restaurant;
+use App\Support\Timezone;
 use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
+use InvalidArgumentException;
 
 class StoreReservationRequest extends FormRequest
 {
     public function authorize(): bool
     {
         return true;
+    }
+
+    /**
+     * @return array<int, \Closure(Validator): void>
+     */
+    public function after(): array
+    {
+        return [
+            function (Validator $validator): void {
+                if ($validator->errors()->has('desired_at')) {
+                    return;
+                }
+
+                $restaurant = $this->route('restaurant');
+                if (! $restaurant instanceof Restaurant) {
+                    return;
+                }
+
+                try {
+                    Timezone::localToUtc((string) $this->input('desired_at'), $restaurant->timezone);
+                } catch (InvalidArgumentException) {
+                    $validator->errors()->add('desired_at', 'Datum und Uhrzeit sind ungültig.');
+                }
+            },
+        ];
     }
 
     /**
