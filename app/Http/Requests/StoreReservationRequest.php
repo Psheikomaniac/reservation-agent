@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Models\ReservationRequest;
 use App\Models\Restaurant;
 use App\Support\Timezone;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -52,7 +53,7 @@ class StoreReservationRequest extends FormRequest
             'guest_name' => ['required', 'string', 'max:120'],
             'guest_email' => ['required', 'email:rfc,dns', 'max:190'],
             'guest_phone' => ['nullable', 'string', 'max:40'],
-            'party_size' => ['required', 'integer', 'min:1', 'max:20'],
+            'party_size' => ['required', 'integer', 'min:1', 'max:'.ReservationRequest::MAX_PARTY_SIZE],
             'desired_at' => ['required', 'date', 'after:now'],
             'message' => ['nullable', 'string', 'max:2000'],
             'website' => ['nullable', 'string', 'max:255'],
@@ -79,7 +80,7 @@ class StoreReservationRequest extends FormRequest
             'party_size.required' => 'Bitte geben Sie die Personenzahl an.',
             'party_size.integer' => 'Die Personenzahl muss eine ganze Zahl sein.',
             'party_size.min' => 'Die Reservierung muss für mindestens 1 Person sein.',
-            'party_size.max' => 'Pro Anfrage sind höchstens 20 Personen möglich.',
+            'party_size.max' => 'Pro Anfrage sind höchstens '.ReservationRequest::MAX_PARTY_SIZE.' Personen möglich.',
 
             'desired_at.required' => 'Bitte geben Sie das gewünschte Datum samt Uhrzeit an.',
             'desired_at.date' => 'Datum und Uhrzeit sind ungültig.',

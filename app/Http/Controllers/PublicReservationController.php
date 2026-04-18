@@ -25,6 +25,7 @@ final class PublicReservationController extends Controller
                 'slug' => $restaurant->slug,
                 'tonality' => $restaurant->tonality->value,
             ],
+            'maxPartySize' => ReservationRequest::MAX_PARTY_SIZE,
         ]);
     }
 

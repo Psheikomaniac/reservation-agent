@@ -144,4 +144,4 @@ return [
 
 - **CAPTCHA Ja/Nein?** – Entschieden: kein CAPTCHA in V1.0, Honeypot + Rate-Limit reichen für den Pilot. Trigger-Kriterien und bevorzugter Anbieter (Cloudflare Turnstile) in [`decisions/captcha-v1.md`](decisions/captcha-v1.md).
 - **Default-Öffnungszeiten-Check im Formular** – V1.0 validiert **nicht**, ob das Restaurant zum gewünschten Zeitpunkt überhaupt geöffnet ist. Diese Prüfung macht der KI-Assistent (PRD-005) und liefert dann z. B. einen Alternativ-Vorschlag. Begründung: wir wollen auch Anfragen außerhalb der Öffnungszeiten annehmen (Eventanfragen, geschlossene Gesellschaften).
-- **Max-Personenzahl pro Restaurant individuell?** – In V1.0 hart auf 20 gecappt. Individuelle Limits kommen erst, wenn ein Pilot es braucht.
+- **Max-Personenzahl pro Restaurant individuell?** – Entschieden: in V1.0 hart auf 20 gecappt, zentralisiert als `ReservationRequest::MAX_PARTY_SIZE`. Trigger für Per-Restaurant-Override und Implementierungs-Skizze in [`decisions/party-size-cap.md`](decisions/party-size-cap.md).

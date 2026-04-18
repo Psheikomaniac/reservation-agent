@@ -19,6 +19,8 @@ class ReservationRequest extends Model
     /** @use HasFactory<ReservationRequestFactory> */
     use HasFactory;
 
+    public const int MAX_PARTY_SIZE = 20;
+
     /**
      * The attributes that are mass assignable.
      *
