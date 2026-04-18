@@ -44,7 +44,7 @@ class PublicReservationStoreTest extends TestCase
         $this->get(route('public.reservations.create', $restaurant))
             ->assertOk()
             ->assertInertia(fn (AssertableInertia $page) => $page
-                ->component('Public/ReservationForm', false)
+                ->component('Public/ReservationForm')
                 ->where('restaurant.name', 'Osteria Luna')
                 ->where('restaurant.slug', 'luna')
                 ->where('restaurant.tonality', Tonality::Family->value)
