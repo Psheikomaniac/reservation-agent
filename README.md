@@ -1,5 +1,7 @@
 # reservation-agent – KI-gestütztes Reservierungssystem für die Gastronomie V1.0
 
+[![CI](https://github.com/Psheikomaniac/reservation-agent/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/Psheikomaniac/reservation-agent/actions/workflows/ci.yml)
+
 Ein zentrales Dashboard, das Reservierungsanfragen aus mehreren Kanälen bündelt und mit KI-Unterstützung beantwortet. **Zielgruppe:** inhabergeführte Restaurants und kleine Ketten, die Reservierungen aktuell manuell über mehrere Quellen bearbeiten.
 
 ---
@@ -78,6 +80,18 @@ php artisan migrate --seed
 composer run dev
 ```
 
+### Ziggy (Route-Helper für TypeScript)
+
+Route-Namen aus `routes/web.php` werden per `tightenco/ziggy` ins Frontend gespiegelt. Die Laufzeit-Daten liefert die Blade-Direktive `@routes` (in `resources/views/app.blade.php`). Für TypeScript-Autocomplete wird zusätzlich `resources/js/ziggy.d.ts` committed.
+
+Nach dem Anlegen oder Umbenennen von Routes:
+
+```bash
+php artisan ziggy:generate --types-only resources/js/ziggy.d.ts
+```
+
+Die CI (`ziggy-drift`-Job) schlägt fehl, wenn die committete Datei veraltet ist.
+
 Erforderliche Umgebungsvariablen (Details in [PRD-001](docs/PRD-001-project-foundation.md)):
 
 ```env
@@ -143,6 +157,24 @@ reservation-agent/
 | Multi-Standort-Verwaltung > 5 Standorte | V3.0    |
 | Mobile App                              | V3.0    |
 | Lokale KI (Ollama/Llama)                | V3.0    |
+
+---
+
+## Branch-Strategie
+
+```
+main   ──●─────────────●─────────  stabil, nur Release-Bündel
+          \           /
+dev     ───●──●──●──●─────────────  Integrations-Branch (hier wird gearbeitet)
+              \  \  \
+               feature/<nr>-…       ein Branch pro GitHub-Issue
+```
+
+- **`main`** bleibt stabil und wird nur per Release-PR aus `dev` aktualisiert (nach expliziter Freigabe).
+- **`dev`** ist der laufende Integrations-Branch. Alle Issue-Branches werden aus `dev` abgeleitet und dorthin zurückgemerged.
+- Pro GitHub-Issue ein kurzlebiger Branch (`feature/<nr>-…`, `fix/<nr>-…`, `docs/<nr>-…`, `refactor/<nr>-…`), der per PR gegen `dev` gemerged und anschließend gelöscht wird.
+
+Details und der vollständige Issue-Workflow stehen in [`CLAUDE.md`](CLAUDE.md).
 
 ---
 
