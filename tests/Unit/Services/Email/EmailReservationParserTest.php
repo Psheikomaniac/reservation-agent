@@ -3,6 +3,7 @@
 namespace Tests\Unit\Services\Email;
 
 use App\Services\Email\EmailReservationParser;
+use App\Services\Email\HtmlToPlainText;
 use Tests\TestCase;
 
 class EmailReservationParserTest extends TestCase
@@ -239,6 +240,42 @@ class EmailReservationParserTest extends TestCase
             );
             $this->assertSame($expected, $result->partySize, "Failed for: {$body}");
         }
+    }
+
+    public function test_html_and_plaintext_versions_of_the_same_mail_parse_identically(): void
+    {
+        $plaintext = "Hallo,\n\nich hätte gerne einen Tisch für 4 Personen am 12.05.2026 um 19:30 Uhr.\n\nGruß,\nAnna Müller";
+
+        $html = '<html><body>'
+            .'<p>Hallo,</p>'
+            .'<p>ich h&auml;tte gerne einen Tisch f&uuml;r 4 Personen am 12.05.2026 um 19:30 Uhr.</p>'
+            .'<p>Gru&szlig;,<br>Anna M&uuml;ller</p>'
+            .'</body></html>';
+
+        $converter = new HtmlToPlainText;
+        $htmlAsText = $converter->convert($html);
+
+        $fromPlain = $this->parser->parseParts(
+            body: $plaintext,
+            senderEmail: 'anna@example.com',
+            senderName: 'Anna Müller',
+            messageId: '<plain@example.com>',
+        );
+
+        $fromHtml = $this->parser->parseParts(
+            body: $htmlAsText,
+            senderEmail: 'anna@example.com',
+            senderName: 'Anna Müller',
+            messageId: '<html@example.com>',
+        );
+
+        $this->assertSame($fromPlain->partySize, $fromHtml->partySize);
+        $this->assertSame(
+            $fromPlain->desiredAt?->format('Y-m-d H:i:s'),
+            $fromHtml->desiredAt?->format('Y-m-d H:i:s'),
+        );
+        $this->assertSame($fromPlain->guestName, $fromHtml->guestName);
+        $this->assertSame($fromPlain->confidence, $fromHtml->confidence);
     }
 
     public function test_it_leaves_phone_null_for_v1(): void

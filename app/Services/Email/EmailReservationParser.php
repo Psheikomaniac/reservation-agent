@@ -12,6 +12,10 @@ use Webklex\PHPIMAP\Message;
 
 final class EmailReservationParser
 {
+    public function __construct(
+        private readonly HtmlToPlainText $htmlToPlainText = new HtmlToPlainText,
+    ) {}
+
     private const PARTY_SIZE_PATTERN = '/(?:für|for)?\s*(\d{1,2})\s*(Personen|Pers\.?|Gäste|People|Guests)/iu';
 
     private const TIME_PATTERN = '/\b(\d{1,2})[:.](\d{2})\s*(Uhr|h|am|pm)?\b/i';
@@ -91,7 +95,7 @@ final class EmailReservationParser
         }
 
         if ($message->hasHTMLBody()) {
-            return trim(strip_tags($message->getHTMLBody()));
+            return $this->htmlToPlainText->convert($message->getHTMLBody());
         }
 
         return '';
