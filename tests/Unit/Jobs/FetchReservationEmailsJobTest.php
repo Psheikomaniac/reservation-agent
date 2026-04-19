@@ -7,7 +7,6 @@ use App\Jobs\FetchReservationEmailsJob;
 use App\Models\FailedEmailImport;
 use App\Models\ReservationRequest;
 use App\Models\Restaurant;
-use App\Services\Email\Contracts\ImapMailbox;
 use App\Services\Email\Contracts\ImapMailboxFactory;
 use App\Services\Email\DTO\FetchedEmail;
 use App\Services\Email\EmailReservationParser;
@@ -15,6 +14,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
+use Tests\Support\Email\FakeImapMailboxFactory;
+use Tests\Support\Email\ThrowingImapMailboxFactory;
 use Tests\TestCase;
 
 class FetchReservationEmailsJobTest extends TestCase
@@ -193,63 +194,5 @@ class FetchReservationEmailsJobTest extends TestCase
             rawHeaders: $rawHeaders,
             rawBody: $rawBody,
         );
-    }
-}
-
-final class FakeImapMailboxFactory implements ImapMailboxFactory
-{
-    public bool $opened = false;
-
-    public FakeImapMailbox $mailbox;
-
-    /**
-     * @param  list<FetchedEmail>  $emails
-     */
-    public function __construct(array $emails)
-    {
-        $this->mailbox = new FakeImapMailbox($emails);
-    }
-
-    public function open(Restaurant $restaurant): ImapMailbox
-    {
-        $this->opened = true;
-
-        return $this->mailbox;
-    }
-}
-
-final class FakeImapMailbox implements ImapMailbox
-{
-    /** @var list<FetchedEmail> */
-    public array $seen = [];
-
-    public ?string $failOn = null;
-
-    /**
-     * @param  list<FetchedEmail>  $emails
-     */
-    public function __construct(private array $emails) {}
-
-    public function fetchUnseen(): array
-    {
-        return $this->emails;
-    }
-
-    public function markSeen(FetchedEmail $email): void
-    {
-        if ($this->failOn !== null && $email->messageId === $this->failOn) {
-            throw new RuntimeException('boom');
-        }
-        $this->seen[] = $email;
-    }
-}
-
-final class ThrowingImapMailboxFactory implements ImapMailboxFactory
-{
-    public function __construct(private \Throwable $exception) {}
-
-    public function open(Restaurant $restaurant): ImapMailbox
-    {
-        throw $this->exception;
     }
 }
