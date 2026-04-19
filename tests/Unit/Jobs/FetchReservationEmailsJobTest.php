@@ -13,6 +13,8 @@ use App\Services\Email\DTO\FetchedEmail;
 use App\Services\Email\EmailReservationParser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
+use RuntimeException;
 use Tests\TestCase;
 
 class FetchReservationEmailsJobTest extends TestCase
@@ -118,6 +120,57 @@ class FetchReservationEmailsJobTest extends TestCase
         Event::assertDispatchedTimes(ReservationRequestReceived::class, 1);
     }
 
+    public function test_retry_policy_exposes_three_tries_and_exponential_backoff(): void
+    {
+        $job = new FetchReservationEmailsJob(1);
+
+        $this->assertSame(3, $job->tries);
+        $this->assertSame(120, $job->timeout);
+        $this->assertSame([30, 120, 300], $job->backoff());
+    }
+
+    public function test_connection_failures_bubble_out_of_handle_so_the_queue_can_retry(): void
+    {
+        $restaurant = Restaurant::factory()->create(['imap_host' => 'imap.example.com']);
+        $factory = new ThrowingImapMailboxFactory(new RuntimeException('imap connect failed'));
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('imap connect failed');
+
+        $this->runJob($restaurant->id, $factory);
+    }
+
+    public function test_failed_hook_logs_context_without_credentials(): void
+    {
+        Log::spy();
+
+        $restaurant = Restaurant::factory()->create([
+            'imap_host' => 'imap.example.com',
+            'imap_username' => 'mailbox@example.com',
+            'imap_password' => 'super-secret-password-xyz',
+        ]);
+
+        $job = new FetchReservationEmailsJob($restaurant->id);
+        $job->failed(new RuntimeException('connection refused'));
+
+        Log::shouldHaveReceived('error')->once()->withArgs(function (string $message, array $context) use ($restaurant) {
+            $this->assertSame('reservation.imap.fetch_failed', $message);
+            $this->assertSame($restaurant->id, $context['restaurant_id']);
+            $this->assertSame('imap.example.com', $context['host']);
+            $this->assertSame('mailbox@example.com', $context['username']);
+            $this->assertSame(RuntimeException::class, $context['exception']);
+            $this->assertSame('connection refused', $context['message']);
+
+            $this->assertArrayNotHasKey('password', $context);
+            $this->assertArrayNotHasKey('imap_password', $context);
+
+            $serialised = json_encode($context);
+            $this->assertStringNotContainsString('super-secret-password-xyz', (string) $serialised);
+
+            return true;
+        });
+    }
+
     private function runJob(int $restaurantId, ImapMailboxFactory $factory): void
     {
         $job = new FetchReservationEmailsJob($restaurantId);
@@ -185,8 +238,18 @@ final class FakeImapMailbox implements ImapMailbox
     public function markSeen(FetchedEmail $email): void
     {
         if ($this->failOn !== null && $email->messageId === $this->failOn) {
-            throw new \RuntimeException('boom');
+            throw new RuntimeException('boom');
         }
         $this->seen[] = $email;
+    }
+}
+
+final class ThrowingImapMailboxFactory implements ImapMailboxFactory
+{
+    public function __construct(private \Throwable $exception) {}
+
+    public function open(Restaurant $restaurant): ImapMailbox
+    {
+        throw $this->exception;
     }
 }
