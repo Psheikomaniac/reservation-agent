@@ -15,6 +15,7 @@ use App\Services\Email\EmailReservationParser;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 final class FetchReservationEmailsJob implements ShouldQueue
@@ -23,6 +24,8 @@ final class FetchReservationEmailsJob implements ShouldQueue
 
     public int $tries = 3;
 
+    public int $timeout = 120;
+
     public function __construct(public int $restaurantId) {}
 
     /**
@@ -30,7 +33,20 @@ final class FetchReservationEmailsJob implements ShouldQueue
      */
     public function backoff(): array
     {
-        return [60, 300, 900];
+        return [30, 120, 300];
+    }
+
+    public function failed(Throwable $exception): void
+    {
+        $restaurant = Restaurant::find($this->restaurantId);
+
+        Log::error('reservation.imap.fetch_failed', [
+            'restaurant_id' => $this->restaurantId,
+            'host' => $restaurant?->imap_host,
+            'username' => $restaurant?->imap_username,
+            'exception' => $exception::class,
+            'message' => $exception->getMessage(),
+        ]);
     }
 
     public function handle(ImapMailboxFactory $factory, EmailReservationParser $parser): void
