@@ -16,7 +16,10 @@ final class WebklexImapMailbox implements ImapMailbox
     /** @var array<string, Message> */
     private array $seenCache = [];
 
-    public function __construct(private readonly Folder $inbox) {}
+    public function __construct(
+        private readonly Folder $inbox,
+        private readonly HtmlToPlainText $htmlToPlainText = new HtmlToPlainText,
+    ) {}
 
     public function fetchUnseen(): array
     {
@@ -58,7 +61,7 @@ final class WebklexImapMailbox implements ImapMailbox
         }
 
         if ($message->hasHTMLBody()) {
-            return trim(strip_tags($message->getHTMLBody()));
+            return $this->htmlToPlainText->convert($message->getHTMLBody());
         }
 
         return '';
