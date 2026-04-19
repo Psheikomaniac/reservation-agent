@@ -121,6 +121,38 @@ class ReservationRequestTest extends TestCase
         $this->assertFalse($request->needs_manual_review);
     }
 
+    public function test_email_message_id_is_nullable_and_fillable(): void
+    {
+        $request = ReservationRequest::factory()->create([
+            'source' => ReservationSource::Email,
+            'email_message_id' => '<abc123@example.com>',
+        ]);
+
+        $this->assertSame('<abc123@example.com>', $request->fresh()->email_message_id);
+    }
+
+    public function test_email_message_id_allows_multiple_null_rows(): void
+    {
+        ReservationRequest::factory()->count(2)->create(['email_message_id' => null]);
+
+        $this->assertSame(2, ReservationRequest::query()->whereNull('email_message_id')->count());
+    }
+
+    public function test_duplicate_email_message_id_is_rejected_at_the_database_level(): void
+    {
+        ReservationRequest::factory()->create([
+            'source' => ReservationSource::Email,
+            'email_message_id' => '<dup@example.com>',
+        ]);
+
+        $this->expectException(QueryException::class);
+
+        ReservationRequest::factory()->create([
+            'source' => ReservationSource::Email,
+            'email_message_id' => '<dup@example.com>',
+        ]);
+    }
+
     public function test_reservation_requests_are_cascade_deleted_with_their_restaurant(): void
     {
         $restaurant = Restaurant::factory()->create();

@@ -38,6 +38,7 @@ class ReservationRequest extends Model
         'message',
         'raw_payload',
         'needs_manual_review',
+        'email_message_id',
     ];
 
     /**
