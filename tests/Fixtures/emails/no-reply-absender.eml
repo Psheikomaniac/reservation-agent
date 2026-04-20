@@ -1,0 +1,16 @@
+From: Reservierungsportal <noreply@portal.de>
+To: reservierung@restaurant.example
+Subject: Neue Reservierungsanfrage
+Date: Mon, 20 Apr 2026 14:00:00 +0200
+Message-ID: <no-reply-absender-001@example.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Neue Reservierung über das Portal:
+
+Gast: kunde@gmail.com
+Tisch für 2 Personen am 01.05.2026 um 18:00 Uhr.
+
+--
+Diese Nachricht wurde automatisch erzeugt.

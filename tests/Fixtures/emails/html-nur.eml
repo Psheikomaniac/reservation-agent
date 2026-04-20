@@ -1,0 +1,16 @@
+From: Anna =?UTF-8?B?TcO8bGxlcg==?= <anna.mueller@example.com>
+To: reservierung@restaurant.example
+Subject: =?UTF-8?B?UmVzZXJ2aWVydW5nc2FuZnJhZ2U=?=
+Date: Mon, 20 Apr 2026 10:15:00 +0200
+Message-ID: <html-nur-001@example.com>
+MIME-Version: 1.0
+Content-Type: text/html; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+<html>
+  <body>
+    <p>Hallo,</p>
+    <p>ich hätte gerne einen Tisch für 4 Personen am 12.05.2026 um 19:30.</p>
+    <p>Gruß,<br>Anna Müller</p>
+  </body>
+</html>
