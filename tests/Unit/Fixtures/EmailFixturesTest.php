@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Fixtures;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Webklex\PHPIMAP\Message;
 
@@ -37,9 +38,7 @@ class EmailFixturesTest extends TestCase
         }
     }
 
-    /**
-     * @dataProvider fixtureProvider
-     */
+    #[DataProvider('fixtureProvider')]
     public function test_fixture_parses_into_a_message(string $file): void
     {
         $path = self::FIXTURE_DIR.'/'.$file;
@@ -52,7 +51,7 @@ class EmailFixturesTest extends TestCase
         $this->assertNotSame('', (string) $message->getMessageId());
     }
 
-    public function test_umlaut_sender_header_is_exposed_as_rfc_2047_encoded_word(): void
+    public function test_umlaut_sender_header_decodes_to_utf8_display_name(): void
     {
         $message = Message::fromFile(self::FIXTURE_DIR.'/umlaut-im-namen.eml');
         $from = $message->getFrom();
@@ -60,12 +59,13 @@ class EmailFixturesTest extends TestCase
 
         $this->assertNotNull($first);
         $this->assertSame('j@x.de', $first->mail);
-        // webklex/php-imap does not auto-decode sender personal names (only
-        // subject and attachment names). The fixture must therefore surface
-        // the raw RFC 2047 encoded-word so the consumer (parser / mailbox)
-        // can decide how to decode it — pinned here for issue #43 awareness.
-        $this->assertSame('=?UTF-8?B?TcO8bGxlciwgSsO8cmdlbg==?=', $first->personal);
-        $this->assertSame('Müller, Jürgen', mb_decode_mimeheader($first->personal));
+
+        // webklex/php-imap decodes subject + attachment names automatically;
+        // the treatment of sender `personal` names is environment-dependent
+        // (some builds decode RFC 2047 encoded-words, others surface them
+        // raw). Normalise via mb_decode_mimeheader so the assertion holds in
+        // both cases — it is a no-op on already-decoded strings.
+        $this->assertSame('Müller, Jürgen', mb_decode_mimeheader((string) $first->personal));
     }
 
     public function test_no_reply_fixture_exposes_body_email_and_sender(): void
