@@ -63,9 +63,17 @@ class EmailFixturesTest extends TestCase
         // webklex/php-imap decodes subject + attachment names automatically;
         // the treatment of sender `personal` names is environment-dependent
         // (some builds decode RFC 2047 encoded-words, others surface them
-        // raw). Normalise via mb_decode_mimeheader so the assertion holds in
-        // both cases — it is a no-op on already-decoded strings.
-        $this->assertSame('Müller, Jürgen', mb_decode_mimeheader((string) $first->personal));
+        // raw). Normalise via iconv_mime_decode with an explicit UTF-8 target
+        // so the assertion holds in both cases — iconv_mime_decode is a no-op
+        // on strings that do not contain encoded-word tokens. mbstring is
+        // avoided here because its internal encoding is not guaranteed to be
+        // UTF-8 across environments.
+        $decoded = iconv_mime_decode(
+            (string) $first->personal,
+            ICONV_MIME_DECODE_CONTINUE_ON_ERROR,
+            'UTF-8',
+        );
+        $this->assertSame('Müller, Jürgen', $decoded);
     }
 
     public function test_no_reply_fixture_exposes_body_email_and_sender(): void
