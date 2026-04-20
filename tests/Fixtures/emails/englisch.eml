@@ -1,0 +1,15 @@
+From: John Doe <john.doe@example.com>
+To: reservations@restaurant.example
+Subject: Reservation request
+Date: Mon, 20 Apr 2026 12:30:00 +0200
+Message-ID: <englisch-001@example.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Hello,
+
+Table for 6 on May 1st, 2026 at 7pm.
+
+Thanks,
+John
