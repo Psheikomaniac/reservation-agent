@@ -32,11 +32,15 @@ final class WebklexImapMailbox implements ImapMailbox
             $body = $this->extractBody($message);
             $sender = $this->extractSender($message);
 
+            $senderName = ($sender !== null && $sender->personal !== '')
+                ? $this->decodeMimeWord($sender->personal)
+                : null;
+
             $fetched = new FetchedEmail(
                 messageId: $messageId,
                 body: $body,
                 senderEmail: $sender?->mail ?? '',
-                senderName: ($sender !== null && $sender->personal !== '') ? $sender->personal : null,
+                senderName: $senderName,
                 rawHeaders: (string) $message->getHeader()->raw,
                 rawBody: $body,
             );
@@ -65,6 +69,37 @@ final class WebklexImapMailbox implements ImapMailbox
         }
 
         return '';
+    }
+
+    private function decodeMimeWord(string $value): string
+    {
+        $result = preg_replace_callback(
+            '/=\?([^?\s]+)\?([BbQq])\?([^?\s]*)\?=/',
+            static function (array $match): string {
+                $charset = strtoupper($match[1]);
+                $encoding = strtoupper($match[2]);
+                $content = $match[3];
+
+                $decoded = $encoding === 'B'
+                    ? base64_decode($content, true)
+                    : quoted_printable_decode(str_replace('_', ' ', $content));
+
+                if (! is_string($decoded)) {
+                    return $match[0];
+                }
+
+                if ($charset === 'UTF-8' || $charset === 'UTF8') {
+                    return $decoded;
+                }
+
+                $converted = @mb_convert_encoding($decoded, 'UTF-8', $charset);
+
+                return is_string($converted) ? $converted : $decoded;
+            },
+            $value,
+        );
+
+        return $result ?? $value;
     }
 
     private function extractSender(Message $message): ?Address
