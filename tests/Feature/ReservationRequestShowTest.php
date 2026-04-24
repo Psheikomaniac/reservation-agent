@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\ReservationSource;
 use App\Models\ReservationRequest;
 use App\Models\Restaurant;
 use App\Models\User;
@@ -80,5 +81,58 @@ class ReservationRequestShowTest extends TestCase
 
         $this->get("/reservations/{$reservation->id}")
             ->assertForbidden();
+    }
+
+    public function test_show_response_carries_detail_resource_shape(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $user = User::factory()->forRestaurant($restaurant)->create();
+        $reservation = ReservationRequest::factory()
+            ->forRestaurant($restaurant)
+            ->create([
+                'source' => ReservationSource::Email,
+                'message' => 'Allergie: Nüsse',
+                'raw_payload' => [
+                    'body' => "Hallo,\nbitte für 4 Personen am Freitag.",
+                    'sender_email' => 'guest@example.test',
+                    'sender_name' => 'Anna Probe',
+                    'message_id' => '<abc@example.test>',
+                ],
+            ]);
+
+        $this->actingAs($user);
+
+        $this->get("/reservations/{$reservation->id}")
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Reservations/Show')
+                ->where('reservation.id', $reservation->id)
+                ->where('reservation.message', 'Allergie: Nüsse')
+                ->where('reservation.has_raw_email', true)
+                ->where('reservation.raw_email_body', "Hallo,\nbitte für 4 Personen am Freitag.")
+                ->has('reservation.raw_payload')
+                ->where('reservation.raw_payload.sender_email', 'guest@example.test')
+            );
+    }
+
+    public function test_web_form_source_does_not_leak_a_raw_email_body(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $user = User::factory()->forRestaurant($restaurant)->create();
+        $reservation = ReservationRequest::factory()
+            ->forRestaurant($restaurant)
+            ->create([
+                'source' => ReservationSource::WebForm,
+                'raw_payload' => ['guest_name' => 'Anna Probe', 'party_size' => 4],
+            ]);
+
+        $this->actingAs($user);
+
+        $this->get("/reservations/{$reservation->id}")
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('reservation.has_raw_email', false)
+                ->where('reservation.raw_email_body', null)
+                ->where('reservation.raw_payload.guest_name', 'Anna Probe')
+            );
     }
 }
