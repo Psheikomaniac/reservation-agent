@@ -73,9 +73,14 @@ final class WebklexImapMailbox implements ImapMailbox
 
     private function decodeMimeWord(string $value): string
     {
-        $decoded = @iconv_mime_decode($value, ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 'UTF-8');
+        $previous = mb_internal_encoding();
+        mb_internal_encoding('UTF-8');
 
-        return $decoded === false ? $value : $decoded;
+        try {
+            return mb_decode_mimeheader($value);
+        } finally {
+            mb_internal_encoding($previous);
+        }
     }
 
     private function extractSender(Message $message): ?Address
