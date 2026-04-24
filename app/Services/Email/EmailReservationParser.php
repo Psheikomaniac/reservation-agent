@@ -50,12 +50,23 @@ final class EmailReservationParser
     {
         $sender = $this->extractSenderAddress($message);
 
+        $personal = ($sender !== null && $sender->personal !== '')
+            ? $this->decodeMimeWord($sender->personal)
+            : null;
+
         return $this->parseParts(
             body: $this->extractBody($message),
             senderEmail: $sender?->mail ?? '',
-            senderName: ($sender !== null && $sender->personal !== '') ? $sender->personal : null,
+            senderName: $personal,
             messageId: (string) $message->getMessageId(),
         );
+    }
+
+    private function decodeMimeWord(string $value): string
+    {
+        $decoded = @iconv_mime_decode($value, ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 'UTF-8');
+
+        return $decoded === false ? $value : $decoded;
     }
 
     public function parseParts(

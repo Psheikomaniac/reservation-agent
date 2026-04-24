@@ -32,11 +32,15 @@ final class WebklexImapMailbox implements ImapMailbox
             $body = $this->extractBody($message);
             $sender = $this->extractSender($message);
 
+            $senderName = ($sender !== null && $sender->personal !== '')
+                ? $this->decodeMimeWord($sender->personal)
+                : null;
+
             $fetched = new FetchedEmail(
                 messageId: $messageId,
                 body: $body,
                 senderEmail: $sender?->mail ?? '',
-                senderName: ($sender !== null && $sender->personal !== '') ? $sender->personal : null,
+                senderName: $senderName,
                 rawHeaders: (string) $message->getHeader()->raw,
                 rawBody: $body,
             );
@@ -65,6 +69,13 @@ final class WebklexImapMailbox implements ImapMailbox
         }
 
         return '';
+    }
+
+    private function decodeMimeWord(string $value): string
+    {
+        $decoded = @iconv_mime_decode($value, ICONV_MIME_DECODE_CONTINUE_ON_ERROR, 'UTF-8');
+
+        return $decoded === false ? $value : $decoded;
     }
 
     private function extractSender(Message $message): ?Address
