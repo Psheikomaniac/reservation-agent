@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PublicReservationController;
 use App\Http\Controllers\ReservationRequestController;
 use Illuminate\Support\Facades\Route;
@@ -9,9 +10,9 @@ Route::get('/', function () {
     return Inertia::render('Welcome');
 })->name('home');
 
-Route::get('dashboard', function () {
-    return Inertia::render('Dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
+Route::get('dashboard', [DashboardController::class, 'index'])
+    ->middleware(['auth', 'verified'])
+    ->name('dashboard');
 
 Route::get('reservations/{reservation}', [ReservationRequestController::class, 'show'])
     ->whereNumber('reservation')
