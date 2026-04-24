@@ -64,14 +64,33 @@ final class EmailReservationParser
 
     private function decodeMimeWord(string $value): string
     {
-        $previous = mb_internal_encoding();
-        mb_internal_encoding('UTF-8');
+        $result = preg_replace_callback(
+            '/=\?([^?\s]+)\?([BbQq])\?([^?\s]*)\?=/',
+            static function (array $match): string {
+                $charset = strtoupper($match[1]);
+                $encoding = strtoupper($match[2]);
+                $content = $match[3];
 
-        try {
-            return mb_decode_mimeheader($value);
-        } finally {
-            mb_internal_encoding($previous);
-        }
+                $decoded = $encoding === 'B'
+                    ? base64_decode($content, true)
+                    : quoted_printable_decode(str_replace('_', ' ', $content));
+
+                if (! is_string($decoded)) {
+                    return $match[0];
+                }
+
+                if ($charset === 'UTF-8' || $charset === 'UTF8') {
+                    return $decoded;
+                }
+
+                $converted = @mb_convert_encoding($decoded, 'UTF-8', $charset);
+
+                return is_string($converted) ? $converted : $decoded;
+            },
+            $value,
+        );
+
+        return $result ?? $value;
     }
 
     public function parseParts(
