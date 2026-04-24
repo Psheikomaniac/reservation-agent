@@ -87,10 +87,16 @@ final class FetchReservationEmailsJob implements ShouldQueue
             messageId: $email->messageId,
         );
 
+        $attributes = $parsed->toReservationRequestAttributes($restaurant->id);
+        $attributes['raw_payload'] = [
+            'body' => $email->body,
+            'sender_email' => $email->senderEmail,
+            'sender_name' => $email->senderName,
+            'message_id' => $email->messageId,
+        ];
+
         try {
-            $request = ReservationRequest::create(
-                $parsed->toReservationRequestAttributes($restaurant->id)
-            );
+            $request = ReservationRequest::create($attributes);
         } catch (QueryException $e) {
             if ($this->isUniqueViolation($e)) {
                 $mailbox->markSeen($email);

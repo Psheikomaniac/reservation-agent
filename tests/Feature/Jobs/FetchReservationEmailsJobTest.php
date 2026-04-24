@@ -117,6 +117,31 @@ class FetchReservationEmailsJobTest extends TestCase
         Event::assertDispatchedTimes(ReservationRequestReceived::class, 2);
     }
 
+    public function test_it_persists_email_envelope_in_raw_payload_for_detail_drawer(): void
+    {
+        Event::fake([ReservationRequestReceived::class]);
+
+        $restaurant = Restaurant::factory()->create(['imap_host' => 'imap.example.com']);
+        $email = $this->makeEmail(
+            messageId: '<envelope@example.com>',
+            body: 'Tisch für 4 Personen am 12.05.2026 um 19:30 Uhr.',
+            senderEmail: 'guest@example.com',
+            senderName: 'Anna Probe',
+        );
+        $this->bindFactoryWith([$email]);
+
+        Bus::dispatchSync(new FetchReservationEmailsJob($restaurant->id));
+
+        $request = ReservationRequest::sole();
+
+        $this->assertSame([
+            'body' => 'Tisch für 4 Personen am 12.05.2026 um 19:30 Uhr.',
+            'sender_email' => 'guest@example.com',
+            'sender_name' => 'Anna Probe',
+            'message_id' => '<envelope@example.com>',
+        ], $request->raw_payload);
+    }
+
     public function test_it_resolves_the_imap_factory_from_the_service_container(): void
     {
         $restaurant = Restaurant::factory()->create(['imap_host' => 'imap.example.com']);
