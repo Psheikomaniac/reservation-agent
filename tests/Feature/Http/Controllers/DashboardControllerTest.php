@@ -10,6 +10,7 @@ use App\Models\ReservationRequest;
 use App\Models\Restaurant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Inertia\Testing\AssertableInertia;
 use Tests\TestCase;
 
@@ -200,5 +201,101 @@ class DashboardControllerTest extends TestCase
     public function test_guests_are_redirected_to_login(): void
     {
         $this->get(route('dashboard'))->assertRedirect(route('login'));
+    }
+
+    public function test_first_visit_injects_status_and_from_defaults_into_filters_prop(): void
+    {
+        $restaurant = Restaurant::factory()->create(['timezone' => 'Europe/Berlin']);
+        $this->actingAs($this->ownerOf($restaurant));
+
+        $this->get(route('dashboard'))
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('filters.status', ['new', 'in_review'])
+                ->where('filters.from', Carbon::now('Europe/Berlin')->toDateString())
+                ->etc()
+            );
+    }
+
+    public function test_first_visit_defaults_hide_records_outside_the_default_set(): void
+    {
+        $restaurant = Restaurant::factory()->create(['timezone' => 'Europe/Berlin']);
+        $this->actingAs($this->ownerOf($restaurant));
+
+        // Will pass the default filter (status=new, future desired_at).
+        $included = ReservationRequest::factory()->forRestaurant($restaurant)->create([
+            'status' => ReservationStatus::New,
+            'desired_at' => Carbon::now('Europe/Berlin')->addDays(2),
+        ]);
+        // Confirmed status — excluded by default filter.
+        ReservationRequest::factory()->forRestaurant($restaurant)->confirmed()->create([
+            'desired_at' => Carbon::now('Europe/Berlin')->addDays(2),
+        ]);
+        // Past desired_at — excluded by default `from = today`.
+        ReservationRequest::factory()->forRestaurant($restaurant)->create([
+            'status' => ReservationStatus::New,
+            'desired_at' => Carbon::now('Europe/Berlin')->subDays(3),
+        ]);
+
+        $this->get(route('dashboard'))
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('requests.meta.total', 1)
+                ->where('requests.data.0.id', $included->id)
+                ->etc()
+            );
+    }
+
+    public function test_any_filter_query_string_suppresses_defaults(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $this->actingAs($this->ownerOf($restaurant));
+
+        // status=[confirmed] is user-driven — must NOT also re-inject the from=today default.
+        $this->get(route('dashboard', ['status' => ['confirmed']]))
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('filters.status', ['confirmed'])
+                ->missing('filters.from')
+                ->etc()
+            );
+    }
+
+    public function test_unrelated_query_string_still_suppresses_defaults(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $this->actingAs($this->ownerOf($restaurant));
+
+        // `?page=2` is not a filter key at all but still indicates user-driven navigation;
+        // defaults must NOT be re-applied (otherwise paginating would change the visible result set
+        // mid-session and any non-default filter would silently fight the from=today injection).
+        $this->get(route('dashboard', ['page' => 2]))
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->missing('filters.status')
+                ->missing('filters.from')
+                ->etc()
+            );
+    }
+
+    public function test_defaults_use_restaurant_timezone_for_today_calculation(): void
+    {
+        // A restaurant in a far-east timezone where "today" can disagree with UTC for several hours.
+        $restaurant = Restaurant::factory()->create(['timezone' => 'Pacific/Auckland']);
+        $this->actingAs($this->ownerOf($restaurant));
+
+        $this->get(route('dashboard'))
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('filters.from', Carbon::now('Pacific/Auckland')->toDateString())
+                ->etc()
+            );
+    }
+
+    public function test_user_without_restaurant_falls_back_to_app_timezone(): void
+    {
+        $orphan = User::factory()->create(['restaurant_id' => null]);
+        $this->actingAs($orphan);
+
+        $this->get(route('dashboard'))
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('filters.from', Carbon::now(config('app.timezone'))->toDateString())
+                ->etc()
+            );
     }
 }
