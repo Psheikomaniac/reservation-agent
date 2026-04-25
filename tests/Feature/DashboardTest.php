@@ -1,11 +1,17 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Tests\Feature;
 
+use App\Enums\ReservationSource;
+use App\Enums\ReservationStatus;
+use App\Models\ReservationRequest;
 use App\Models\Restaurant;
 use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Inertia\Testing\AssertableInertia;
 use Tests\TestCase;
 
@@ -77,6 +83,245 @@ class DashboardTest extends TestCase
             ->assertInertia(fn (AssertableInertia $page) => $page
                 ->component('Dashboard')
                 ->where('restaurant.name', 'Demo Restaurant')
+                ->etc()
+            );
+    }
+
+    public function test_lists_reservations_scoped_to_own_restaurant(): void
+    {
+        [$ownRestaurant, $otherRestaurant] = Restaurant::factory()->count(2)->create();
+        $user = User::factory()->forRestaurant($ownRestaurant)->create();
+
+        ReservationRequest::factory()->forRestaurant($ownRestaurant)->count(3)->create();
+        ReservationRequest::factory()->forRestaurant($otherRestaurant)->count(2)->create();
+
+        $this->actingAs($user)
+            ->get('/dashboard')
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Dashboard')
+                ->has('requests.data', 3)
+                ->etc()
+            );
+    }
+
+    public function test_forbids_listing_other_restaurants_reservations_in_payload(): void
+    {
+        [$ownRestaurant, $otherRestaurant] = Restaurant::factory()->count(2)->create();
+        $user = User::factory()->forRestaurant($ownRestaurant)->create();
+
+        ReservationRequest::factory()
+            ->forRestaurant($otherRestaurant)
+            ->create(['guest_name' => 'Foreign Guest']);
+
+        $this->actingAs($user)
+            ->get('/dashboard')
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Dashboard')
+                ->has('requests.data', 0)
+                ->etc()
+            )
+            ->assertDontSee('Foreign Guest');
+    }
+
+    public function test_applies_default_filters_on_first_visit(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $user = User::factory()->forRestaurant($restaurant)->create();
+
+        $today = Carbon::now($restaurant->timezone)->startOfDay();
+
+        // Should appear: status in [new, in_review] AND desired_at >= today
+        ReservationRequest::factory()->forRestaurant($restaurant)->create([
+            'status' => ReservationStatus::New,
+            'desired_at' => $today->copy()->addDay(),
+        ]);
+        ReservationRequest::factory()->forRestaurant($restaurant)->inReview()->create([
+            'desired_at' => $today->copy()->addDays(2),
+        ]);
+
+        // Excluded: wrong status
+        ReservationRequest::factory()->forRestaurant($restaurant)->confirmed()->create([
+            'desired_at' => $today->copy()->addDay(),
+        ]);
+
+        // Excluded: desired_at before today
+        ReservationRequest::factory()->forRestaurant($restaurant)->create([
+            'status' => ReservationStatus::New,
+            'desired_at' => $today->copy()->subDays(3),
+        ]);
+
+        $this->actingAs($user)
+            ->get('/dashboard')
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Dashboard')
+                ->has('requests.data', 2)
+                ->where('filters.status', [
+                    ReservationStatus::New->value,
+                    ReservationStatus::InReview->value,
+                ])
+                ->where('filters.from', $today->toDateString())
+                ->etc()
+            );
+    }
+
+    public function test_combines_status_source_and_date_filters(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $user = User::factory()->forRestaurant($restaurant)->create();
+
+        $today = Carbon::now($restaurant->timezone)->startOfDay();
+
+        // Match: confirmed + email + within range
+        $matching = ReservationRequest::factory()->forRestaurant($restaurant)->confirmed()->create([
+            'source' => ReservationSource::Email,
+            'desired_at' => $today->copy()->addDays(3),
+            'guest_name' => 'Matching Guest',
+        ]);
+
+        // Wrong status (new vs confirmed filter)
+        ReservationRequest::factory()->forRestaurant($restaurant)->create([
+            'status' => ReservationStatus::New,
+            'source' => ReservationSource::Email,
+            'desired_at' => $today->copy()->addDays(3),
+        ]);
+
+        // Wrong source (web_form vs email filter)
+        ReservationRequest::factory()->forRestaurant($restaurant)->confirmed()->create([
+            'source' => ReservationSource::WebForm,
+            'desired_at' => $today->copy()->addDays(3),
+        ]);
+
+        // Outside date range
+        ReservationRequest::factory()->forRestaurant($restaurant)->confirmed()->create([
+            'source' => ReservationSource::Email,
+            'desired_at' => $today->copy()->addDays(20),
+        ]);
+
+        $this->actingAs($user)
+            ->get('/dashboard?'.http_build_query([
+                'status' => [ReservationStatus::Confirmed->value],
+                'source' => [ReservationSource::Email->value],
+                'from' => $today->toDateString(),
+                'to' => $today->copy()->addDays(7)->toDateString(),
+            ]))
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Dashboard')
+                ->has('requests.data', 1)
+                ->where('requests.data.0.id', $matching->id)
+                ->etc()
+            );
+    }
+
+    public function test_searches_by_guest_name_and_email(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $user = User::factory()->forRestaurant($restaurant)->create();
+
+        $today = Carbon::now($restaurant->timezone)->startOfDay()->addDay();
+
+        $byName = ReservationRequest::factory()->forRestaurant($restaurant)->create([
+            'guest_name' => 'Anneliese Schmidt',
+            'guest_email' => 'unrelated@example.com',
+            'desired_at' => $today,
+        ]);
+
+        $byEmail = ReservationRequest::factory()->forRestaurant($restaurant)->create([
+            'guest_name' => 'Bob Jones',
+            'guest_email' => 'anneliese.fan@example.com',
+            'desired_at' => $today,
+        ]);
+
+        $excluded = ReservationRequest::factory()->forRestaurant($restaurant)->create([
+            'guest_name' => 'Carla Klein',
+            'guest_email' => 'carla@example.com',
+            'desired_at' => $today,
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get('/dashboard?'.http_build_query([
+                'q' => 'anneliese',
+                'from' => Carbon::now($restaurant->timezone)->subDay()->toDateString(),
+            ]));
+
+        $response->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Dashboard')
+                ->has('requests.data', 2)
+                ->etc()
+            );
+
+        $ids = collect($response->viewData('page')['props']['requests']['data'])->pluck('id')->all();
+        $this->assertEqualsCanonicalizing([$byName->id, $byEmail->id], $ids);
+        $this->assertNotContains($excluded->id, $ids);
+    }
+
+    public function test_marks_rows_needing_manual_review_in_resource_payload(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $user = User::factory()->forRestaurant($restaurant)->create();
+
+        $today = Carbon::now($restaurant->timezone)->startOfDay()->addDay();
+
+        ReservationRequest::factory()->forRestaurant($restaurant)->create([
+            'desired_at' => $today,
+            'needs_manual_review' => true,
+            'guest_name' => 'Needs Review',
+        ]);
+
+        ReservationRequest::factory()->forRestaurant($restaurant)->create([
+            'desired_at' => $today,
+            'needs_manual_review' => false,
+            'guest_name' => 'All Clear',
+        ]);
+
+        $response = $this->actingAs($user)->get('/dashboard');
+
+        $rows = collect($response->viewData('page')['props']['requests']['data']);
+
+        $review = $rows->firstWhere('guest_name', 'Needs Review');
+        $clear = $rows->firstWhere('guest_name', 'All Clear');
+
+        $this->assertNotNull($review, 'Reservation flagged for review is missing from the dashboard payload.');
+        $this->assertNotNull($clear, 'Clean reservation is missing from the dashboard payload.');
+        $this->assertTrue($review['needs_manual_review']);
+        $this->assertFalse($clear['needs_manual_review']);
+    }
+
+    public function test_paginates_results_with_25_per_page(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $user = User::factory()->forRestaurant($restaurant)->create();
+
+        $tomorrow = Carbon::now($restaurant->timezone)->startOfDay()->addDay();
+
+        ReservationRequest::factory()
+            ->forRestaurant($restaurant)
+            ->count(30)
+            ->create(['desired_at' => $tomorrow]);
+
+        $this->actingAs($user)
+            ->get('/dashboard')
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Dashboard')
+                ->has('requests.data', 25)
+                ->where('requests.meta.per_page', 25)
+                ->where('requests.meta.total', 30)
+                ->where('requests.meta.last_page', 2)
+                ->etc()
+            );
+
+        $this->actingAs($user)
+            ->get('/dashboard?page=2')
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Dashboard')
+                ->has('requests.data', 5)
+                ->where('requests.meta.current_page', 2)
                 ->etc()
             );
     }
