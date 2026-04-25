@@ -52,3 +52,54 @@ export interface User {
 }
 
 export type BreadcrumbItemType = BreadcrumbItem;
+
+export type ReservationStatus = 'new' | 'in_review' | 'replied' | 'confirmed' | 'declined' | 'cancelled';
+export type ReservationSource = 'web_form' | 'email';
+
+export interface ReservationRequestRow {
+    id: number;
+    status: ReservationStatus;
+    source: ReservationSource;
+    guest_name: string;
+    guest_email: string | null;
+    guest_phone: string | null;
+    party_size: number;
+    desired_at: string | null;
+    needs_manual_review: boolean;
+    created_at: string | null;
+    has_raw_email: boolean;
+}
+
+export interface PaginatorMeta {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+    from: number | null;
+    to: number | null;
+}
+
+export interface PaginatorLink {
+    url: string | null;
+    label: string;
+    active: boolean;
+}
+
+export interface PaginatedReservationRequests {
+    data: ReservationRequestRow[];
+    meta: PaginatorMeta & { links: PaginatorLink[] };
+    links: { first: string | null; last: string | null; prev: string | null; next: string | null };
+}
+
+export interface DashboardFilters {
+    status?: ReservationStatus[];
+    source?: ReservationSource[];
+    from?: string;
+    to?: string;
+    q?: string;
+}
+
+export interface DashboardStats {
+    new: number;
+    in_review: number;
+}
