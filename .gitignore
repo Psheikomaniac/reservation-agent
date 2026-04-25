@@ -27,6 +27,7 @@
 /public/build
 /public/hot
 /public/storage
+/resources/js/ziggy.js
 npm-debug.log
 yarn-error.log
 
