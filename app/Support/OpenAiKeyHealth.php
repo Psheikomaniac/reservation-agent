@@ -18,6 +18,16 @@ use Illuminate\Support\Facades\Cache;
  * a transient "I dismissed this and now don't realise the key is still
  * broken" failure mode is worse than waiting for the next successful
  * call to clear it.
+ *
+ * Storage caveat: this flag lives wherever the configured cache driver
+ * lives. With `file` / `redis` / `database` drivers it persists across
+ * requests and worker processes, which is what we want. With `array`
+ * (e.g. inside a single test or a misconfigured Octane runtime) the
+ * flag is request-scoped and the banner will appear to flicker on
+ * every request — not a correctness issue, but worth knowing when
+ * debugging an environment where the banner refuses to surface.
+ * `cache:clear` will also dismiss the flag silently; treat that as
+ * acceptable, since it's an explicit operator action.
  */
 final class OpenAiKeyHealth
 {
