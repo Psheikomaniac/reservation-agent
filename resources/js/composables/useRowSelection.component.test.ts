@@ -1,14 +1,16 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
-import { computed, defineComponent, h } from 'vue';
+import { computed, defineComponent, h, watch } from 'vue';
 import { useRowSelection } from './useRowSelection';
 
 /**
  * Component-level integration test: mounts a minimal table that wires up
  * `useRowSelection` exactly the way Dashboard.vue does (header checkbox +
- * per-row checkboxes + counter). Verifies the user-visible behavior — clicks
- * flow through the composable and update the rendered state — instead of
- * pulling in the full Dashboard with Inertia/Ziggy/Layout dependencies.
+ * per-row checkboxes + counter, plus a watcher that calls `retainVisible`
+ * after every row-set change to model partial-reload cleanup). Verifies the
+ * user-visible behavior — clicks flow through the composable and update the
+ * rendered state — instead of pulling in the full Dashboard with
+ * Inertia/Ziggy/Layout dependencies.
  */
 const TestTable = defineComponent({
     props: {
@@ -18,6 +20,14 @@ const TestTable = defineComponent({
         const selection = useRowSelection();
         const visibleIds = computed(() => props.rows.map((r) => r.id));
         const headerState = computed(() => selection.visibleState(visibleIds.value));
+
+        // Mirrors Dashboard.vue: every time the row set changes (polling
+        // reload, filter, pagination), drop off-view selections so the bulk
+        // action operates on rows the operator can still see (#84).
+        watch(
+            () => props.rows.map((r) => r.id).join(','),
+            () => selection.retainVisible(visibleIds.value),
+        );
 
         return () =>
             h('div', [
@@ -106,5 +116,60 @@ describe('row selection wiring', () => {
 
         expect(wrapper.get('[data-testid="count"]').text()).toBe('0');
         expect(wrapper.get('[data-testid="header-state"]').text()).toBe('none');
+    });
+
+    describe('reload cleanup (#84)', () => {
+        it('preserves selections of rows that survive a partial reload', async () => {
+            const wrapper = mount(TestTable, { props: { rows: sampleRows } });
+
+            await wrapper.get('[data-testid="row-10"]').trigger('change');
+            await wrapper.get('[data-testid="row-11"]').trigger('change');
+            expect(wrapper.get('[data-testid="count"]').text()).toBe('2');
+
+            // Simulate a polling reload that returns the same rows.
+            await wrapper.setProps({ rows: [...sampleRows] });
+
+            expect(wrapper.get('[data-testid="count"]').text()).toBe('2');
+            expect((wrapper.get('[data-testid="row-10"]').element as HTMLInputElement).checked).toBe(true);
+            expect((wrapper.get('[data-testid="row-11"]').element as HTMLInputElement).checked).toBe(true);
+        });
+
+        it('drops a selected row that left the page after a partial reload', async () => {
+            const wrapper = mount(TestTable, { props: { rows: sampleRows } });
+
+            // Select all three.
+            await wrapper.get('[data-testid="header"]').trigger('change');
+            expect(wrapper.get('[data-testid="count"]').text()).toBe('3');
+
+            // Simulate reload after id 11 was marked declined and dropped from
+            // the active filter — only ids 10 and 12 remain visible.
+            await wrapper.setProps({
+                rows: [
+                    { id: 10, name: 'Anna' },
+                    { id: 12, name: 'Carla' },
+                ],
+            });
+
+            expect(wrapper.get('[data-testid="count"]').text()).toBe('2');
+            expect((wrapper.get('[data-testid="row-10"]').element as HTMLInputElement).checked).toBe(true);
+            expect((wrapper.get('[data-testid="row-12"]').element as HTMLInputElement).checked).toBe(true);
+        });
+
+        it('clears selection when the user navigates to a page with no overlapping ids', async () => {
+            const wrapper = mount(TestTable, { props: { rows: sampleRows } });
+
+            await wrapper.get('[data-testid="row-11"]').trigger('change');
+            expect(wrapper.get('[data-testid="count"]').text()).toBe('1');
+
+            // Page 2 — disjoint id space.
+            await wrapper.setProps({
+                rows: [
+                    { id: 20, name: 'Dora' },
+                    { id: 21, name: 'Eli' },
+                ],
+            });
+
+            expect(wrapper.get('[data-testid="count"]').text()).toBe('0');
+        });
     });
 });

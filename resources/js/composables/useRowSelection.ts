@@ -12,6 +12,7 @@ export interface UseRowSelection {
     isVisibleAllSelected: (visibleIds: readonly number[]) => boolean;
     isVisibleIndeterminate: (visibleIds: readonly number[]) => boolean;
     toggleAllVisible: (visibleIds: readonly number[]) => void;
+    retainVisible: (visibleIds: readonly number[]) => void;
     clear: () => void;
 }
 
@@ -95,6 +96,34 @@ export function useRowSelection(): UseRowSelection {
         internal.value = next;
     }
 
+    /**
+     * Drops every selected id that is not in `visibleIds`.
+     *
+     * Call this after the dashboard re-renders the row set (polling reload,
+     * filter change, pagination) so the bulk action operates on rows the
+     * operator can still see. Without it, ids that left the view (e.g. a row
+     * that was just marked declined and now no longer matches the active
+     * status filter) would silently linger in the selection.
+     */
+    function retainVisible(visibleIds: readonly number[]): void {
+        if (internal.value.size === 0) {
+            return;
+        }
+
+        const next = new Set<number>();
+        for (const id of visibleIds) {
+            if (internal.value.has(id)) {
+                next.add(id);
+            }
+        }
+
+        if (next.size === internal.value.size) {
+            return;
+        }
+
+        internal.value = next;
+    }
+
     function clear(): void {
         internal.value = new Set();
     }
@@ -109,6 +138,7 @@ export function useRowSelection(): UseRowSelection {
         isVisibleAllSelected,
         isVisibleIndeterminate,
         toggleAllVisible,
+        retainVisible,
         clear,
     };
 }
