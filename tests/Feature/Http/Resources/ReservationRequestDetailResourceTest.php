@@ -50,6 +50,7 @@ class ReservationRequestDetailResourceTest extends TestCase
             'message',
             'raw_payload',
             'raw_email_body',
+            'latest_reply',
         ], array_keys($payload));
 
         $this->assertSame('Allergie: Nüsse', $payload['message']);

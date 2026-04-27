@@ -104,8 +104,20 @@ export interface DashboardStats {
     in_review: number;
 }
 
+export type ReservationReplyStatus = 'draft' | 'approved' | 'sent' | 'failed';
+
+export interface ReservationReplySummary {
+    id: number;
+    status: ReservationReplyStatus;
+    body: string;
+    approved_at: string | null;
+    sent_at: string | null;
+    error_message: string | null;
+}
+
 export interface ReservationRequestDetail extends ReservationRequestRow {
     message: string | null;
     raw_payload: Record<string, unknown> | null;
     raw_email_body: string | null;
+    latest_reply: ReservationReplySummary | null;
 }
