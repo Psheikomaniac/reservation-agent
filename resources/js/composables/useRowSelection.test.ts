@@ -148,4 +148,56 @@ describe('useRowSelection', () => {
         s.setSelected(7, false);
         expect(s.count.value).toBe(0);
     });
+
+    describe('retainVisible (#84 polling-reload cleanup)', () => {
+        it('drops ids that are no longer visible', () => {
+            const s = useRowSelection();
+
+            s.toggle(1);
+            s.toggle(2);
+            s.toggle(99);
+
+            s.retainVisible([1, 2, 5]);
+
+            expect(s.isSelected(1)).toBe(true);
+            expect(s.isSelected(2)).toBe(true);
+            expect(s.isSelected(99)).toBe(false);
+            expect(s.count.value).toBe(2);
+        });
+
+        it('keeps every id when all selections remain visible', () => {
+            const s = useRowSelection();
+
+            s.toggle(1);
+            s.toggle(2);
+
+            s.retainVisible([1, 2, 3]);
+
+            expect(s.count.value).toBe(2);
+            expect(s.isSelected(1)).toBe(true);
+            expect(s.isSelected(2)).toBe(true);
+        });
+
+        it('clears the selection when no selected id is visible anymore', () => {
+            const s = useRowSelection();
+
+            s.toggle(7);
+            s.toggle(8);
+
+            s.retainVisible([10, 11]);
+
+            expect(s.count.value).toBe(0);
+        });
+
+        it('is a no-op on an empty selection (does not allocate)', () => {
+            const s = useRowSelection();
+            const before = s.selectedIds.value;
+
+            s.retainVisible([1, 2, 3]);
+
+            expect(s.count.value).toBe(0);
+            // Same Set reference — proves the early return short-circuited.
+            expect(s.selectedIds.value).toBe(before);
+        });
+    });
 });

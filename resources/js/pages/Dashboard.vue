@@ -204,6 +204,11 @@ const headerCheckedModel = computed<boolean | 'indeterminate'>(() => {
     return selection.isVisibleAllSelected(visibleRowIds.value);
 });
 
+// After every partial reload (polling, filter change, pagination) drop ids
+// that are no longer in the active row set so a bulk action only ever
+// operates on rows the operator can still see.
+watch(visibleRowIds, (ids) => selection.retainVisible(ids));
+
 watch(
     () => props.selectedRequest?.id,
     () => {
