@@ -51,6 +51,21 @@ class ReservationReplyMailTest extends TestCase
         $mailable->assertDontSeeInText('approved_by');
     }
 
+    public function test_special_characters_in_body_are_not_html_escaped(): void
+    {
+        // Operator-typed body containing quotes, ampersand, German Umlaute.
+        // In a plaintext email, these MUST reach the guest verbatim — not
+        // as `&quot;`/`&amp;` HTML entities.
+        $reply = $this->makeReply('Gäste-Tisch für 4 Personen "am Fenster" & ruhig — ÖPNV-Anbindung gut.');
+
+        $mailable = new ReservationReplyMail($reply);
+
+        $mailable->assertSeeInText('"am Fenster"');
+        $mailable->assertSeeInText(' & ');
+        $mailable->assertDontSeeInText('&quot;');
+        $mailable->assertDontSeeInText('&amp;');
+    }
+
     public function test_uses_the_application_from_address(): void
     {
         config()->set('mail.from.address', 'no-reply@test.tld');

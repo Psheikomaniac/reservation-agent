@@ -40,8 +40,13 @@ final class ReservationReplyMail extends Mailable
         return new Content(
             text: 'emails.reservation-reply',
             with: [
+                // Body is rendered with `{!! $body !!}` (raw, not escaped) so
+                // operator-typed quotes/ampersands/Umlaute reach the guest as
+                // typed. The body is operator-approved (PRD-005 human-in-the-
+                // loop), so the threat model that motivates Blade's default
+                // escaping does not apply — and HTML-escaping inside a
+                // plaintext mail is incorrect by definition.
                 'body' => $this->reply->body,
-                'restaurantName' => $this->reply->reservationRequest->restaurant->name,
             ],
         );
     }
