@@ -211,15 +211,34 @@ const REPLY_STATUS_BADGE: Record<'draft' | 'approved' | 'sent' | 'failed', strin
 const replyBody = ref('');
 const approving = ref(false);
 
+// Per-reply scratchpad. Switching rows must NOT silently lose an
+// in-progress edit, so unsaved bodies are stashed by reply.id and
+// restored when the operator comes back. Polling that re-broadcasts
+// the same reply.id is also a no-op against this cache.
+const replyEditCache = ref<Record<number, string>>({});
+
+const currentReplyId = computed(() => props.selectedRequest?.latest_reply?.id ?? null);
+
 const isReplyEditable = computed(() => {
     const reply = props.selectedRequest?.latest_reply;
     return reply !== null && reply !== undefined && reply.status === 'draft';
 });
 
 watch(
-    () => props.selectedRequest?.latest_reply?.body,
-    (body) => {
-        replyBody.value = body ?? '';
+    currentReplyId,
+    (id, prevId) => {
+        // Stash the body the operator was editing before we switch.
+        if (typeof prevId === 'number') {
+            replyEditCache.value[prevId] = replyBody.value;
+        }
+
+        if (typeof id !== 'number') {
+            replyBody.value = '';
+            return;
+        }
+
+        const cached = replyEditCache.value[id];
+        replyBody.value = cached ?? props.selectedRequest?.latest_reply?.body ?? '';
     },
     { immediate: true },
 );
@@ -237,6 +256,11 @@ function submitApproval(): void {
     approving.value = true;
     router.post(route('reservation-replies.approve', { reply: reply.id }), payload, {
         preserveScroll: true,
+        onSuccess: () => {
+            // The reply has been dispatched — drop the scratchpad so a
+            // subsequent re-open shows the canonical server-side body.
+            delete replyEditCache.value[reply.id];
+        },
         onFinish: () => {
             approving.value = false;
         },
