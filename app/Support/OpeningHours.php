@@ -73,6 +73,30 @@ final class OpeningHours
         return false;
     }
 
+    /**
+     * Reason the restaurant is closed at the given moment, or null if it is
+     * open. Discriminates between a Ruhetag (no blocks for the weekday at
+     * all) and a closed time slot on an otherwise opened day.
+     *
+     * Return values match the `closed_reason` enum used in
+     * `ReservationContextBuilder` (PRD-005):
+     *   null                          → open
+     *   'ruhetag'                     → no opening blocks for this weekday
+     *   'ausserhalb_oeffnungszeiten'  → outside the day's opening blocks
+     */
+    public function closedReasonAt(CarbonInterface $time): ?string
+    {
+        if ($this->isOpenAt($time)) {
+            return null;
+        }
+
+        $local = $time->copy()->setTimezone($this->timezone);
+        $dayKey = self::DAY_KEYS[(int) $local->dayOfWeek];
+        $blocks = $this->schedule[$dayKey] ?? [];
+
+        return $blocks === [] ? 'ruhetag' : 'ausserhalb_oeffnungszeiten';
+    }
+
     private function toMinutes(string $hhmm): int
     {
         [$h, $m] = explode(':', $hhmm);
