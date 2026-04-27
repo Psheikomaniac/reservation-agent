@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Services\AI;
 
 use App\Models\ReservationRequest;
+use App\Models\Restaurant;
 use App\Support\OpeningHours;
+use Carbon\CarbonInterface;
 
 /**
  * Deterministic producer of the Context-JSON consumed by the AI reply
@@ -24,6 +26,12 @@ use App\Support\OpeningHours;
  */
 final class ReservationContextBuilder
 {
+    /** Spacing between candidate alternative slots, in minutes (PRD-005). */
+    private const int SLOT_STEP_MINUTES = 30;
+
+    /** Maximum number of alternative slots returned to the AI prompt. */
+    private const int MAX_ALTERNATIVE_SLOTS = 3;
+
     /**
      * @return array{
      *     restaurant: array{name: string, tonality: string},
@@ -63,11 +71,66 @@ final class ReservationContextBuilder
             'availability' => [
                 'is_open_at_desired_time' => $isOpen,
                 'seats_free_at_desired' => $seatsFree,
-                // Alternative-slot generation is implemented in #67. For #65
-                // the field is present (per the documented shape) but empty.
-                'alternative_slots' => [],
+                'alternative_slots' => $desiredAt === null
+                    ? []
+                    : $this->alternativeSlots($restaurant, $desiredAt, $request->party_size),
                 'closed_reason' => $closedReason,
             ],
         ];
+    }
+
+    /**
+     * Up to MAX_ALTERNATIVE_SLOTS candidate slots on the same restaurant-local
+     * day, spaced SLOT_STEP_MINUTES apart, that:
+     *   - lie inside an opening block,
+     *   - have at least $partySize seats free,
+     *   - are not the exact desired time.
+     *
+     * Sorted by absolute distance to the desired time (closest first).
+     * Returns `[]` when the day has no opening blocks (Ruhetag).
+     *
+     * @return list<string> Carbon `Y-m-d H:i` formatted strings in restaurant local time.
+     */
+    private function alternativeSlots(Restaurant $restaurant, CarbonInterface $desiredAt, int $partySize): array
+    {
+        $hours = OpeningHours::fromRestaurant($restaurant);
+        $blocks = $hours->blocksAt($desiredAt);
+
+        if ($blocks === []) {
+            return [];
+        }
+
+        $local = $desiredAt->copy()->setTimezone($restaurant->timezone);
+        $desiredKey = $local->format('Y-m-d H:i');
+
+        $eligible = [];
+        foreach ($blocks as $block) {
+            $start = $local->copy()->setTimeFromTimeString($block['from']);
+            $end = $local->copy()->setTimeFromTimeString($block['to']);
+
+            for ($cursor = $start->copy(); $cursor->lt($end); $cursor->addMinutes(self::SLOT_STEP_MINUTES)) {
+                if ($cursor->format('Y-m-d H:i') === $desiredKey) {
+                    continue;
+                }
+
+                $seats = $restaurant->availableSeatsAt($cursor);
+                if ($seats === null || $seats < $partySize) {
+                    continue;
+                }
+
+                $eligible[] = $cursor->copy();
+            }
+        }
+
+        usort(
+            $eligible,
+            fn (CarbonInterface $a, CarbonInterface $b): int => abs($a->diffInSeconds($local))
+                <=> abs($b->diffInSeconds($local))
+        );
+
+        return array_map(
+            fn (CarbonInterface $slot): string => $slot->format('Y-m-d H:i'),
+            array_slice($eligible, 0, self::MAX_ALTERNATIVE_SLOTS)
+        );
     }
 }
