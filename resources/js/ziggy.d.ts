@@ -9,6 +9,7 @@ declare module 'ziggy-js' {
             "required": true
         }
     ],
+    "reservations.bulk-status": [],
     "public.reservations.create": [
         {
             "name": "restaurant",
