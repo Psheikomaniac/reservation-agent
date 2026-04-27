@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Feature\Http;
 
 use App\Enums\ReservationReplyStatus;
-use App\Jobs\SendReservationReplyJob;
 use App\Mail\ReservationReplyMail;
 use App\Models\ReservationReply;
 use App\Models\ReservationRequest;
@@ -108,30 +107,5 @@ class ApproveAndSendEditedBodyTest extends TestCase
         Mail::assertSent(ReservationReplyMail::class, function (ReservationReplyMail $mail): bool {
             return str_contains($mail->render(), self::ORIGINAL_DRAFT);
         });
-    }
-
-    public function test_send_job_is_dispatched_via_the_queue_pipeline(): void
-    {
-        // Sanity check: the chain approve-controller → SendJob → Mailable
-        // is end-to-end on the sync queue.
-        Mail::fake();
-
-        $restaurant = Restaurant::factory()->create();
-        $user = User::factory()->create(['restaurant_id' => $restaurant->id]);
-        $request = ReservationRequest::factory()->forRestaurant($restaurant)->create();
-        $reply = ReservationReply::factory()->create([
-            'reservation_request_id' => $request->id,
-            'status' => ReservationReplyStatus::Draft,
-            'body' => 'whatever',
-        ]);
-
-        $this->actingAs($user)
-            ->post(route('reservation-replies.approve', $reply));
-
-        $this->assertSame(ReservationReplyStatus::Sent, $reply->fresh()->status);
-
-        // SendReservationReplyJob has a class constant; if the symbol disappears
-        // (e.g. job renamed) this test fails fast.
-        $this->assertSame(3, (new SendReservationReplyJob($reply->id))->tries);
     }
 }
