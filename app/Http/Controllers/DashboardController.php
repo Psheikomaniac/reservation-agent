@@ -57,6 +57,7 @@ final class DashboardController extends Controller
 
         $reservation = ReservationRequest::query()
             ->withoutGlobalScopes()
+            ->with(['latestReply'])
             ->find($id);
 
         if ($reservation === null || ! Gate::forUser($request->user())->allows('view', $reservation)) {

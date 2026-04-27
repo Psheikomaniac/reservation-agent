@@ -194,6 +194,79 @@ const drawerOpen = computed({
 
 const rawEmailOpen = ref(false);
 
+const REPLY_STATUS_LABEL: Record<'draft' | 'approved' | 'sent' | 'failed', string> = {
+    draft: 'KI-Vorschlag verfügbar',
+    approved: 'Wird versendet',
+    sent: 'Versendet',
+    failed: 'Versand fehlgeschlagen',
+};
+
+const REPLY_STATUS_BADGE: Record<'draft' | 'approved' | 'sent' | 'failed', string> = {
+    draft: 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200',
+    approved: 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-200',
+    sent: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200',
+    failed: 'bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-200',
+};
+
+const replyBody = ref('');
+const approving = ref(false);
+
+// Per-reply scratchpad. Switching rows must NOT silently lose an
+// in-progress edit, so unsaved bodies are stashed by reply.id and
+// restored when the operator comes back. Polling that re-broadcasts
+// the same reply.id is also a no-op against this cache.
+const replyEditCache = ref<Record<number, string>>({});
+
+const currentReplyId = computed(() => props.selectedRequest?.latest_reply?.id ?? null);
+
+const isReplyEditable = computed(() => {
+    const reply = props.selectedRequest?.latest_reply;
+    return reply !== null && reply !== undefined && reply.status === 'draft';
+});
+
+watch(
+    currentReplyId,
+    (id, prevId) => {
+        // Stash the body the operator was editing before we switch.
+        if (typeof prevId === 'number') {
+            replyEditCache.value[prevId] = replyBody.value;
+        }
+
+        if (typeof id !== 'number') {
+            replyBody.value = '';
+            return;
+        }
+
+        const cached = replyEditCache.value[id];
+        replyBody.value = cached ?? props.selectedRequest?.latest_reply?.body ?? '';
+    },
+    { immediate: true },
+);
+
+function submitApproval(): void {
+    const reply = props.selectedRequest?.latest_reply;
+    if (!reply || reply.status !== 'draft') {
+        return;
+    }
+
+    const original = reply.body;
+    const edited = replyBody.value.trim();
+    const payload = edited !== '' && edited !== original ? { body: edited } : {};
+
+    approving.value = true;
+    router.post(route('reservation-replies.approve', { reply: reply.id }), payload, {
+        preserveScroll: true,
+        onSuccess: () => {
+            // The reply has been dispatched — drop the scratchpad so a
+            // subsequent re-open shows the canonical server-side body.
+            delete replyEditCache.value[reply.id];
+        },
+        onFinish: () => {
+            approving.value = false;
+        },
+    });
+}
+
 const selection = useRowSelection();
 const visibleRowIds = computed(() => props.requests.data.map((row) => row.id));
 const headerCheckedModel = computed<boolean | 'indeterminate'>(() => {
@@ -530,6 +603,43 @@ usePagePolling(() => router.reload({ only: pollOnly(), preserveScroll: true, pre
                         >
                     </CollapsibleContent>
                 </Collapsible>
+
+                <section v-if="props.selectedRequest.latest_reply" class="space-y-2 border-t border-border pt-4" data-testid="ai-reply-section">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-sm font-medium">KI-Antwortvorschlag</h3>
+                        <span
+                            class="rounded-full px-2 py-0.5 text-xs font-medium"
+                            :class="REPLY_STATUS_BADGE[props.selectedRequest.latest_reply.status]"
+                            data-testid="ai-reply-status"
+                        >
+                            {{ REPLY_STATUS_LABEL[props.selectedRequest.latest_reply.status] }}
+                        </span>
+                    </div>
+
+                    <textarea
+                        v-model="replyBody"
+                        :disabled="!isReplyEditable"
+                        rows="8"
+                        class="w-full resize-y rounded-md border border-border bg-background p-3 text-sm leading-relaxed disabled:cursor-not-allowed disabled:opacity-60"
+                        data-testid="ai-reply-textarea"
+                    ></textarea>
+
+                    <p
+                        v-if="props.selectedRequest.latest_reply.status === 'failed' && props.selectedRequest.latest_reply.error_message"
+                        class="text-xs text-red-600 dark:text-red-400"
+                        data-testid="ai-reply-error"
+                    >
+                        Versand fehlgeschlagen: {{ props.selectedRequest.latest_reply.error_message }}
+                    </p>
+
+                    <p v-if="props.selectedRequest.latest_reply.sent_at" class="text-xs text-muted-foreground" data-testid="ai-reply-sent-at">
+                        Versendet: {{ renderTime(props.selectedRequest.latest_reply.sent_at) }}
+                    </p>
+
+                    <Button v-if="isReplyEditable" :disabled="approving" class="w-full" data-testid="ai-reply-approve" @click="submitApproval">
+                        Freigeben &amp; Versenden
+                    </Button>
+                </section>
             </SheetContent>
         </Sheet>
     </AppLayout>
