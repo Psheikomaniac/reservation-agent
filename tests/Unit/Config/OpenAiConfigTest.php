@@ -28,10 +28,19 @@ class OpenAiConfigTest extends TestCase
 
     public function test_openai_config_reads_api_key_from_env_via_env_helper(): void
     {
-        $config = require base_path('config/openai.php');
+        $sentinel = 'sk-test-config-wiring-'.bin2hex(random_bytes(4));
+        $original = getenv('OPENAI_API_KEY');
 
-        $this->assertArrayHasKey('api_key', $config);
-        $this->assertSame(env('OPENAI_API_KEY'), $config['api_key']);
+        putenv("OPENAI_API_KEY={$sentinel}");
+
+        try {
+            $config = require base_path('config/openai.php');
+
+            $this->assertArrayHasKey('api_key', $config);
+            $this->assertSame($sentinel, $config['api_key']);
+        } finally {
+            putenv($original === false ? 'OPENAI_API_KEY' : "OPENAI_API_KEY={$original}");
+        }
     }
 
     public function test_openai_facade_returns_faked_chat_response_without_network(): void
