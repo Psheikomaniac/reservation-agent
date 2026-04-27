@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Enums\ReservationReplyStatus;
+use App\Events\OpenAiAuthenticationFailed;
+use App\Exceptions\AI\OpenAiAuthenticationException;
+use App\Exceptions\AI\OpenAiRateLimitException;
 use App\Models\ReservationReply;
 use App\Models\ReservationRequest;
 use App\Services\AI\Contracts\ReplyGenerator;
@@ -35,13 +38,16 @@ use Throwable;
  * instead of bubbling out of the worker as an uncaught exception during
  * sync-queue execution.
  */
-final class GenerateReservationReplyJob implements ShouldQueue
+class GenerateReservationReplyJob implements ShouldQueue
 {
     use Queueable;
 
-    public int $tries = 1;
+    public int $tries = 2;
 
     public int $timeout = 30;
+
+    /** Delay before re-attempting after a 429 (PRD-005). */
+    public const int RATE_LIMIT_RETRY_DELAY_SECONDS = 60;
 
     public function __construct(public int $reservationRequestId) {}
 
@@ -69,22 +75,55 @@ final class GenerateReservationReplyJob implements ShouldQueue
                 'body' => $body,
                 'ai_prompt_snapshot' => $context,
             ]);
+        } catch (OpenAiRateLimitException $e) {
+            // First 429 → release back to queue with the configured delay.
+            // Second 429 falls through to the generic-fallback path.
+            if ($this->attempts() < $this->tries) {
+                $this->release(self::RATE_LIMIT_RETRY_DELAY_SECONDS);
+
+                return;
+            }
+
+            $this->storeFallbackDraft($request, $context, $logger, '429 rate-limit after retry');
+        } catch (OpenAiAuthenticationException $e) {
+            // 401 → admin notification, no retry. Always fall straight
+            // through to the fallback path so the dashboard still has
+            // something to show.
+            OpenAiAuthenticationFailed::dispatch();
+
+            $this->storeFallbackDraft($request, $context, $logger, '401 authentication failed');
         } catch (Throwable $e) {
-            // Log without leaking the context payload — only the error
-            // message and the request id end up in the log line.
-            $logger->warning('reservation.reply.generate_failed', [
-                'reservation_request_id' => $request->id,
-                'error' => $e->getMessage(),
-            ]);
-
-            $request->forceFill(['needs_manual_review' => true])->save();
-
-            ReservationReply::create([
-                'reservation_request_id' => $request->id,
-                'status' => ReservationReplyStatus::Draft,
-                'body' => OpenAiReplyGenerator::FALLBACK_TEXT,
-                'ai_prompt_snapshot' => $context,
-            ]);
+            // 5xx, timeouts, network, builder/persistence errors,
+            // missing API key at DI time → immediate fallback. No retry.
+            $this->storeFallbackDraft($request, $context, $logger, $e->getMessage());
         }
+    }
+
+    /**
+     * Persist the fallback draft and flag the request for manual review.
+     * Always called from inside a handled-exception branch — never from
+     * the happy path.
+     *
+     * @param  array<string, mixed>|null  $context
+     */
+    private function storeFallbackDraft(
+        ReservationRequest $request,
+        ?array $context,
+        LoggerInterface $logger,
+        string $reason,
+    ): void {
+        $logger->warning('reservation.reply.generate_failed', [
+            'reservation_request_id' => $request->id,
+            'reason' => $reason,
+        ]);
+
+        $request->forceFill(['needs_manual_review' => true])->save();
+
+        ReservationReply::create([
+            'reservation_request_id' => $request->id,
+            'status' => ReservationReplyStatus::Draft,
+            'body' => OpenAiReplyGenerator::FALLBACK_TEXT,
+            'ai_prompt_snapshot' => $context,
+        ]);
     }
 }
