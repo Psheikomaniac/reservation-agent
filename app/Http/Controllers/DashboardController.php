@@ -6,9 +6,12 @@ namespace App\Http\Controllers;
 
 use App\Enums\ReservationStatus;
 use App\Http\Requests\DashboardFilterRequest;
+use App\Http\Resources\ReservationRequestDetailResource;
 use App\Http\Resources\ReservationRequestResource;
 use App\Models\ReservationRequest;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -16,9 +19,13 @@ final class DashboardController extends Controller
 {
     public function index(DashboardFilterRequest $request): Response
     {
-        $filters = $request->query() === []
+        $validated = $request->validated();
+        $selectedId = isset($validated['selected']) ? (int) $validated['selected'] : null;
+
+        $filterQuery = Arr::except($request->query(), ['selected']);
+        $filters = $filterQuery === []
             ? $this->defaultFilters($request)
-            : $request->validated();
+            : Arr::except($validated, ['selected']);
 
         $requests = ReservationRequest::query()
             ->filter($filters)
@@ -38,13 +45,31 @@ final class DashboardController extends Controller
                     ->where('status', ReservationStatus::InReview)
                     ->count(),
             ],
+            'selectedRequest' => fn () => $this->resolveSelected($selectedId, $request),
         ]);
     }
 
+    private function resolveSelected(?int $id, DashboardFilterRequest $request): ?array
+    {
+        if ($id === null) {
+            return null;
+        }
+
+        $reservation = ReservationRequest::query()
+            ->withoutGlobalScopes()
+            ->find($id);
+
+        if ($reservation === null || ! Gate::forUser($request->user())->allows('view', $reservation)) {
+            return null;
+        }
+
+        return (new ReservationRequestDetailResource($reservation))->toArray($request);
+    }
+
     /**
-     * Defaults applied only when the query string is fully empty
-     * (first visit, no user-supplied filter). Any querystring at all —
-     * including filter clears that send `?status[]=` — bypasses these.
+     * Defaults applied only when no filter query parameters are present.
+     * The `selected` parameter is ignored here so opening the drawer via
+     * deep link does not blow away the default filters.
      *
      * @return array<string, mixed>
      */

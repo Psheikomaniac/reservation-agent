@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/AppLayout.vue';
 import {
@@ -8,19 +10,20 @@ import {
     type DashboardFilters,
     type DashboardStats,
     type PaginatedReservationRequests,
-    type ReservationRequestRow,
+    type ReservationRequestDetail,
     type ReservationSource,
     type ReservationStatus,
     type SharedData,
 } from '@/types';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { Info } from 'lucide-vue-next';
+import { ChevronDown, Info } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 
 interface DashboardProps {
     filters: DashboardFilters;
     requests: PaginatedReservationRequests;
     stats: DashboardStats;
+    selectedRequest?: ReservationRequestDetail | null;
 }
 
 const props = defineProps<DashboardProps>();
@@ -168,9 +171,40 @@ function formatDateTime(iso: string | null): string {
     }).format(date);
 }
 
-function rowDetailHref(row: ReservationRequestRow): string {
-    return route('reservations.show', row.id);
+function detailHref(rowId: number | null): string {
+    const data = buildQuery({});
+    if (rowId !== null) {
+        data.selected = rowId;
+    } else {
+        delete data.selected;
+    }
+
+    return route('dashboard', data);
 }
+
+const drawerOpen = computed({
+    get: () => props.selectedRequest != null,
+    set: (open: boolean) => {
+        if (open || props.selectedRequest == null) {
+            return;
+        }
+
+        router.visit(detailHref(null), {
+            only: ['selectedRequest'],
+            preserveScroll: true,
+            preserveState: true,
+        });
+    },
+});
+
+const rawEmailOpen = ref(false);
+
+watch(
+    () => props.selectedRequest?.id,
+    () => {
+        rawEmailOpen.value = false;
+    },
+);
 </script>
 
 <template>
@@ -322,7 +356,16 @@ function rowDetailHref(row: ReservationRequestRow): string {
                                 </div>
                             </td>
                             <td class="px-3 py-2">
-                                <Link :href="rowDetailHref(row)" class="text-sm font-medium text-primary hover:underline"> Details </Link>
+                                <Link
+                                    :href="detailHref(row.id)"
+                                    :only="['selectedRequest']"
+                                    :preserve-scroll="true"
+                                    :preserve-state="true"
+                                    class="text-sm font-medium text-primary hover:underline"
+                                    :data-testid="`open-detail-${row.id}`"
+                                >
+                                    Details
+                                </Link>
                             </td>
                         </tr>
                     </tbody>
@@ -383,5 +426,62 @@ function rowDetailHref(row: ReservationRequestRow): string {
                 </Tooltip>
             </TooltipProvider>
         </div>
+
+        <Sheet v-model:open="drawerOpen">
+            <SheetContent v-if="props.selectedRequest" class="flex w-full flex-col gap-4 sm:max-w-lg" data-testid="reservation-detail-drawer">
+                <SheetHeader>
+                    <SheetTitle>{{ props.selectedRequest.guest_name }}</SheetTitle>
+                    <SheetDescription>
+                        {{ SOURCE_LABEL[props.selectedRequest.source] }} ·
+                        {{ STATUS_LABEL[props.selectedRequest.status] }}
+                    </SheetDescription>
+                </SheetHeader>
+
+                <dl class="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-2 text-sm" data-testid="reservation-detail-fields">
+                    <dt class="font-medium text-muted-foreground">Eingegangen</dt>
+                    <dd>{{ formatDateTime(props.selectedRequest.created_at) }}</dd>
+
+                    <dt class="font-medium text-muted-foreground">Wunschzeit</dt>
+                    <dd>{{ formatDateTime(props.selectedRequest.desired_at) }}</dd>
+
+                    <dt class="font-medium text-muted-foreground">Personen</dt>
+                    <dd>{{ props.selectedRequest.party_size }}</dd>
+
+                    <dt class="font-medium text-muted-foreground">E-Mail</dt>
+                    <dd class="break-all">{{ props.selectedRequest.guest_email ?? '–' }}</dd>
+
+                    <dt class="font-medium text-muted-foreground">Telefon</dt>
+                    <dd>{{ props.selectedRequest.guest_phone ?? '–' }}</dd>
+                </dl>
+
+                <section v-if="props.selectedRequest.message" class="space-y-1.5">
+                    <h3 class="text-sm font-medium text-muted-foreground">Nachricht</h3>
+                    <p class="whitespace-pre-line rounded-md border border-border bg-muted/30 p-3 text-sm">
+                        {{ props.selectedRequest.message }}
+                    </p>
+                </section>
+
+                <Collapsible
+                    v-if="props.selectedRequest.raw_email_body"
+                    v-model:open="rawEmailOpen"
+                    class="space-y-2"
+                    data-testid="raw-email-collapsible"
+                >
+                    <CollapsibleTrigger as-child>
+                        <Button variant="outline" size="sm" class="w-full justify-between">
+                            <span>Original-E-Mail anzeigen</span>
+                            <ChevronDown class="size-4 transition-transform" :class="rawEmailOpen ? 'rotate-180' : ''" />
+                        </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                        <pre
+                            class="max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted/30 p-3 text-xs leading-relaxed"
+                            data-testid="raw-email-body"
+                            >{{ props.selectedRequest.raw_email_body }}</pre
+                        >
+                    </CollapsibleContent>
+                </Collapsible>
+            </SheetContent>
+        </Sheet>
     </AppLayout>
 </template>

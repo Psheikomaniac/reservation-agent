@@ -30,6 +30,7 @@ class DashboardFilterRequest extends FormRequest
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date', 'after_or_equal:from'],
             'q' => ['nullable', 'string', 'max:120'],
+            'selected' => ['nullable', 'integer', 'min:1'],
         ];
     }
 
