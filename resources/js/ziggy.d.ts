@@ -10,6 +10,13 @@ declare module 'ziggy-js' {
         }
     ],
     "reservations.bulk-status": [],
+    "reservation-replies.approve": [
+        {
+            "name": "reply",
+            "required": true,
+            "binding": "id"
+        }
+    ],
     "public.reservations.create": [
         {
             "name": "restaurant",

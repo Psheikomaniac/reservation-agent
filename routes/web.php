@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PublicReservationController;
+use App\Http\Controllers\ReservationReplyController;
 use App\Http\Controllers\ReservationRequestController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -22,6 +23,10 @@ Route::get('reservations/{reservation}', [ReservationRequestController::class, '
 Route::post('reservations/bulk-status', [ReservationRequestController::class, 'bulkStatus'])
     ->middleware(['auth', 'verified'])
     ->name('reservations.bulk-status');
+
+Route::post('reservation-replies/{reply}/approve', [ReservationReplyController::class, 'approve'])
+    ->middleware(['auth', 'verified', 'can:approve,reply'])
+    ->name('reservation-replies.approve');
 
 Route::get('r/{restaurant:slug}/reservations', [PublicReservationController::class, 'create'])
     ->name('public.reservations.create');
