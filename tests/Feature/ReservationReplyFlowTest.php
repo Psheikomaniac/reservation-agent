@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\Mail;
 use OpenAI\Contracts\ClientContract;
 use OpenAI\Laravel\Facades\OpenAI;
 use OpenAI\Responses\Chat\CreateResponse;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -144,30 +145,34 @@ class ReservationReplyFlowTest extends TestCase
 
     public function test_it_marks_reply_as_failed_when_mail_sending_throws(): void
     {
-        Mail::fake();
-        Mail::shouldReceive('to')->andThrow(new \RuntimeException('SMTP unreachable'));
+        // Drives the SendJob directly: the HTTP layer adds nothing to this
+        // assertion (Laravel's exception handler renders sync-queue throws
+        // as a 500 response, not as a thrown PHPUnit failure), and the
+        // chain through the controller is already exercised by the
+        // happy-path "sends an approved reply via mail" case above.
         $this->fakeOpenAi('ok');
-
         $request = $this->makeRequest();
         ReservationRequestReceived::dispatch($request);
+        /** @var ReservationReply $reply */
         $reply = ReservationReply::withoutGlobalScopes()->where('reservation_request_id', $request->id)->sole();
-        $user = User::factory()->create(['restaurant_id' => $request->restaurant_id]);
+        $reply->forceFill(['status' => ReservationReplyStatus::Approved, 'approved_at' => now()])->save();
 
-        // The send job rethrows on failure (so Laravel retries). Catch it
-        // here because we're running on the sync queue inline with the POST.
+        Mail::fake();
+        Mail::shouldReceive('to')->andThrow(new \RuntimeException('SMTP unreachable'));
+
         try {
-            $this->actingAs($user)->post(route('reservation-replies.approve', $reply));
+            (new SendReservationReplyJob($reply->id))->handle();
+            $this->fail('SendReservationReplyJob should rethrow so Laravel retries.');
         } catch (\RuntimeException) {
-            // expected — last attempt would call failed() in production.
+            // intermediate state: status stays Approved, error_message updated.
         }
+        $this->assertSame(ReservationReplyStatus::Approved, $reply->fresh()->status);
+        $this->assertSame('SMTP unreachable', $reply->fresh()->error_message);
 
-        // After all sync-queue attempts, the failed() callback flips Failed.
-        // For a deterministic assertion here, drive failed() directly.
+        // After Laravel exhausts the retries it calls failed(), which is
+        // the sole writer of the terminal Failed status.
         (new SendReservationReplyJob($reply->id))->failed(new \RuntimeException('SMTP unreachable'));
-
-        $reply->refresh();
-        $this->assertSame(ReservationReplyStatus::Failed, $reply->status);
-        $this->assertSame('SMTP unreachable', $reply->error_message);
+        $this->assertSame(ReservationReplyStatus::Failed, $reply->fresh()->status);
     }
 
     public function test_it_forbids_approval_of_replies_from_other_restaurants(): void
@@ -192,19 +197,27 @@ class ReservationReplyFlowTest extends TestCase
         $this->assertSame(ReservationReplyStatus::Draft, $reply->fresh()->status);
     }
 
-    public function test_it_uses_the_fallback_text_when_openai_fails(): void
+    /**
+     * @return array<string, array{0: \Throwable}>
+     */
+    public static function classifiedFailureProvider(): array
     {
-        // Simulate the job-layer fallback by binding a generator that
-        // throws — this is the path the job actively guards against.
-        // (The OpenAI client itself catches generic errors and returns
-        // the fallback in-place, in which case the job sees a normal
-        // string and there's nothing to flag — that branch is exercised
-        // by the per-component generator tests.)
-        $this->app->bind(ReplyGenerator::class, fn () => new class implements ReplyGenerator
+        return [
+            '401 from OpenAI' => [new OpenAiAuthenticationException],
+            'unknown throwable' => [new \RuntimeException('upstream failure')],
+        ];
+    }
+
+    #[DataProvider('classifiedFailureProvider')]
+    public function test_it_uses_the_fallback_text_when_the_generator_throws(\Throwable $error): void
+    {
+        $this->app->bind(ReplyGenerator::class, fn () => new class($error) implements ReplyGenerator
         {
+            public function __construct(private readonly \Throwable $error) {}
+
             public function generate(array $context): string
             {
-                throw new OpenAiAuthenticationException;
+                throw $this->error;
             }
         });
 
@@ -215,6 +228,9 @@ class ReservationReplyFlowTest extends TestCase
         $reply = ReservationReply::withoutGlobalScopes()->where('reservation_request_id', $request->id)->sole();
         $this->assertSame(ReservationReplyStatus::Draft, $reply->status);
         $this->assertSame(OpenAiReplyGenerator::FALLBACK_TEXT, $reply->body);
-        $this->assertTrue($request->fresh()->needs_manual_review);
+        $this->assertTrue(
+            $request->fresh()->needs_manual_review,
+            'Every fallback path the job actively catches must flag manual review.'
+        );
     }
 }
