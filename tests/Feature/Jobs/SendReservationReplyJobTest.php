@@ -58,7 +58,7 @@ class SendReservationReplyJobTest extends TestCase
         $this->assertSame(ReservationStatus::Replied, $reply->reservationRequest->fresh()->status);
     }
 
-    public function test_it_marks_reply_failed_when_mail_throws(): void
+    public function test_handle_records_error_message_but_keeps_status_approved_for_retry(): void
     {
         Mail::fake();
         Mail::shouldReceive('to')->andThrow(new RuntimeException('SMTP server unreachable'));
@@ -69,14 +69,42 @@ class SendReservationReplyJobTest extends TestCase
             (new SendReservationReplyJob($reply->id))->handle();
             $this->fail('Expected the job to rethrow so Laravel retries.');
         } catch (RuntimeException) {
-            // expected
+            // expected — Laravel reschedules per the backoff array.
         }
 
         $reply->refresh();
-        $this->assertSame(ReservationReplyStatus::Failed, $reply->status);
+        // Status must stay Approved so subsequent retries are NOT skipped
+        // by the early-return Sent/Failed guard. Only failed() flips Failed.
+        $this->assertSame(ReservationReplyStatus::Approved, $reply->status);
         $this->assertSame('SMTP server unreachable', $reply->error_message);
         // Request status must NOT advance to Replied on failure.
         $this->assertSame(ReservationStatus::InReview, $reply->reservationRequest->fresh()->status);
+    }
+
+    public function test_handle_does_not_skip_a_retry_after_a_previous_attempt_threw(): void
+    {
+        Mail::fake();
+        $invocations = 0;
+        Mail::shouldReceive('to')->andReturnUsing(function () use (&$invocations) {
+            $invocations++;
+            throw new RuntimeException('SMTP timeout');
+        });
+
+        $reply = $this->makeReply();
+        $job = new SendReservationReplyJob($reply->id);
+
+        try {
+            $job->handle();
+        } catch (RuntimeException) {
+            // first attempt — Laravel would reschedule per backoff[].
+        }
+        try {
+            $job->handle();
+        } catch (RuntimeException) {
+            // second attempt — must reach Mail::to again, not be skipped.
+        }
+
+        $this->assertSame(2, $invocations, 'Second attempt was skipped — retry policy is broken.');
     }
 
     public function test_it_skips_already_sent_or_failed_replies(): void

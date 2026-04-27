@@ -18,14 +18,19 @@ use Throwable;
  * ReservationReply by id, mails the operator-approved body to the guest,
  * and transitions both the reply and its parent request on success.
  *
- * On any failure: the reply is marked `failed` with the trimmed exception
- * message stored in `error_message`. The dashboard surfaces this so the
- * operator can retry or compose a manual reply.
+ * Failure handling:
+ *   - Transient errors (SMTP/network/etc.) inside handle() update only
+ *     `error_message` and rethrow so Laravel retries. The reply stays in
+ *     its pre-attempt state (Approved) so the early-return guard does
+ *     NOT swallow subsequent attempts.
+ *   - Permanent / deterministic errors (missing guest email) flip to
+ *     `Failed` directly without throwing — there's nothing to retry.
+ *   - The `failed()` callback runs only after Laravel has exhausted all
+ *     retries, and is the ONLY place that flips a transient failure to
+ *     the terminal `Failed` state.
  *
  * Retry policy: explicit and capped — three attempts with growing backoff
- * (matches the existing `FetchReservationEmailsJob`). The last attempt
- * routes through `failed()` so the dashboard always reflects a deterministic
- * end state.
+ * (matches the existing `FetchReservationEmailsJob`).
  */
 final class SendReservationReplyJob implements ShouldQueue
 {
@@ -81,7 +86,12 @@ final class SendReservationReplyJob implements ShouldQueue
             // (PRD-005: send success → request status = replied).
             $reservationRequest->forceFill(['status' => ReservationStatus::Replied])->save();
         } catch (Throwable $e) {
-            $this->markFailed($reply, $e->getMessage());
+            // Record the latest error so the dashboard can surface progress
+            // between attempts, but DON'T flip to Failed yet — that's the
+            // failed() callback's job, after Laravel exhausts the retries.
+            // Flipping to Failed here would trigger the early-return guard
+            // on the next attempt and silently disable the retry policy.
+            $reply->forceFill(['error_message' => trim($e->getMessage())])->save();
 
             throw $e;
         }
