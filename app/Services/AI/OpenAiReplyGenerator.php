@@ -7,6 +7,7 @@ namespace App\Services\AI;
 use App\Exceptions\AI\OpenAiAuthenticationException;
 use App\Exceptions\AI\OpenAiRateLimitException;
 use App\Services\AI\Contracts\ReplyGenerator;
+use App\Support\OpenAiKeyHealth;
 use OpenAI\Contracts\ClientContract;
 use OpenAI\Exceptions\ErrorException;
 use OpenAI\Exceptions\RateLimitException;
@@ -60,6 +61,11 @@ final class OpenAiReplyGenerator implements ReplyGenerator
             ]);
 
             $content = trim((string) ($response->choices[0]->message->content ?? ''));
+
+            // Reaching this point means the call authenticated successfully —
+            // auto-clear the admin "OpenAI key check" banner (#76) so the
+            // dashboard doesn't strand stale alerts after a key rotation.
+            OpenAiKeyHealth::clear();
 
             return $content !== '' ? $content : self::FALLBACK_TEXT;
         } catch (ErrorException $e) {
