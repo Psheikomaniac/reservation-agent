@@ -9,6 +9,7 @@ import { usePagePolling } from '@/composables/usePagePolling';
 import { useRowSelection } from '@/composables/useRowSelection';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { formatDateTime } from '@/lib/format-datetime';
+import { type DiffLine, lineDiff } from '@/lib/line-diff';
 import {
     type BreadcrumbItem,
     type DashboardFilters,
@@ -211,6 +212,13 @@ const REPLY_STATUS_BADGE: Record<'draft' | 'approved' | 'sent' | 'failed', strin
 
 const replyBody = ref('');
 const approving = ref(false);
+const diffOpen = ref(false);
+
+const DIFF_PREFIX: Record<'added' | 'removed' | 'context', string> = {
+    added: '+',
+    removed: '−',
+    context: ' ',
+};
 
 // Per-reply scratchpad. Switching rows must NOT silently lose an
 // in-progress edit, so unsaved bodies are stashed by reply.id and
@@ -223,6 +231,22 @@ const currentReplyId = computed(() => props.selectedRequest?.latest_reply?.id ??
 const isReplyEditable = computed(() => {
     const reply = props.selectedRequest?.latest_reply;
     return reply !== null && reply !== undefined && reply.status === 'draft';
+});
+
+const isEdited = computed(() => {
+    const reply = props.selectedRequest?.latest_reply;
+    if (!reply) {
+        return false;
+    }
+    return replyBody.value.trim() !== reply.body.trim();
+});
+
+const replyDiff = computed<DiffLine[]>(() => {
+    const reply = props.selectedRequest?.latest_reply;
+    if (!reply) {
+        return [];
+    }
+    return lineDiff(reply.body, replyBody.value);
 });
 
 watch(
@@ -250,7 +274,12 @@ function submitApproval(): void {
         return;
     }
 
-    const original = reply.body;
+    // Trim both sides so a whitespace-only "edit" doesn't get persisted
+    // as a real operator edit. `isEdited` and the diff panel use the
+    // same convention; mismatching here would let the button relabel
+    // itself to "Bearbeitete Version senden" yet still send the
+    // original body, or vice versa.
+    const original = reply.body.trim();
     const edited = replyBody.value.trim();
     const payload = edited !== '' && edited !== original ? { body: edited } : {};
 
@@ -640,6 +669,31 @@ usePagePolling(() => router.reload({ only: pollOnly(), preserveScroll: true, pre
                         data-testid="ai-reply-textarea"
                     ></textarea>
 
+                    <Collapsible v-if="isReplyEditable && isEdited" v-model:open="diffOpen" class="space-y-2" data-testid="ai-reply-diff-collapsible">
+                        <CollapsibleTrigger as-child>
+                            <Button variant="outline" size="sm" class="w-full justify-between" data-testid="ai-reply-diff-toggle">
+                                <span>Änderungen gegenüber dem KI-Vorschlag anzeigen</span>
+                                <ChevronDown class="size-4 transition-transform" :class="diffOpen ? 'rotate-180' : ''" />
+                            </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                            <ol class="space-y-1 rounded-md border border-border bg-muted/30 p-3 text-xs leading-relaxed" data-testid="ai-reply-diff">
+                                <li
+                                    v-for="(line, idx) in replyDiff"
+                                    :key="idx"
+                                    :class="{
+                                        'text-emerald-700 dark:text-emerald-400': line.kind === 'added',
+                                        'text-red-700 line-through dark:text-red-400': line.kind === 'removed',
+                                        'text-muted-foreground': line.kind === 'context',
+                                    }"
+                                >
+                                    <span class="select-none pr-2 font-mono">{{ DIFF_PREFIX[line.kind] }}</span>
+                                    <span class="whitespace-pre-wrap">{{ line.text || ' ' }}</span>
+                                </li>
+                            </ol>
+                        </CollapsibleContent>
+                    </Collapsible>
+
                     <p
                         v-if="props.selectedRequest.latest_reply.status === 'failed' && props.selectedRequest.latest_reply.error_message"
                         class="text-xs text-red-600 dark:text-red-400"
@@ -653,7 +707,7 @@ usePagePolling(() => router.reload({ only: pollOnly(), preserveScroll: true, pre
                     </p>
 
                     <Button v-if="isReplyEditable" :disabled="approving" class="w-full" data-testid="ai-reply-approve" @click="submitApproval">
-                        Freigeben &amp; Versenden
+                        {{ isEdited ? 'Bearbeitete Version senden' : 'Freigeben & Versenden' }}
                     </Button>
                 </section>
             </SheetContent>
