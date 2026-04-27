@@ -30,6 +30,7 @@ interface DashboardProps {
     requests: PaginatedReservationRequests;
     stats: DashboardStats;
     selectedRequest?: ReservationRequestDetail | null;
+    openaiKeyRejectedAt?: string | null;
 }
 
 const props = defineProps<DashboardProps>();
@@ -305,6 +306,21 @@ usePagePolling(() => router.reload({ only: pollOnly(), preserveScroll: true, pre
 
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="flex h-full flex-1 flex-col gap-6 p-6">
+            <div
+                v-if="props.openaiKeyRejectedAt"
+                class="flex items-start gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-100"
+                data-testid="openai-key-banner"
+            >
+                <Info class="mt-0.5 size-5 shrink-0" />
+                <div>
+                    <strong class="font-medium">OpenAI-Key prüfen</strong>
+                    <p class="leading-relaxed">
+                        Die letzte KI-Anfrage wurde mit HTTP 401 abgewiesen. Hinterlege einen gültigen API-Key in der Umgebungs-Konfiguration. Sobald
+                        die nächste Antwort erfolgreich generiert wird, verschwindet dieser Hinweis automatisch.
+                    </p>
+                </div>
+            </div>
+
             <header class="flex flex-wrap items-end justify-between gap-4" data-testid="restaurant-header">
                 <div>
                     <h1 class="text-2xl font-semibold tracking-tight">{{ restaurantName }}</h1>
