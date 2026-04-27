@@ -178,6 +178,27 @@ Details und der vollständige Issue-Workflow stehen in [`CLAUDE.md`](CLAUDE.md).
 
 ---
 
+## Self-Review pro Issue (Pflicht)
+
+**Jeder PR gegen `dev` durchläuft vor dem Merge einen Self-Review.** Ohne sauberen Self-Review wird kein Issue als abgeschlossen betrachtet – auch dann nicht, wenn CI grün ist.
+
+**Ablauf (Skill `code-review:code-review <PR#>`):**
+
+1. Eligibility-Check: PR offen, kein Draft, noch kein Review-Comment vorhanden.
+2. Fünf parallele Review-Lenses:
+   - `CLAUDE.md`-Konformität
+   - Bug-Scan auf den Diff
+   - Git-History-Kontext (was wurde hier früher absichtlich entfernt / hinzugefügt?)
+   - Kommentare aus früheren PRs an denselben Pfaden
+   - Code-Comments vs. Implementierung (halten Docblocks ihre Versprechen?)
+3. Scoring jedes Findings (0–100, parallel). Findings mit Score < 80 fallen raus.
+4. Verbleibende Findings als PR-Kommentar mit `gh pr comment` festhalten und Permalink zur Stelle (`<sha>/path#L<from>-L<to>`).
+5. Findings beheben, neuer Push, CI grün, **dann** mergen. Anschließend Issue manuell schließen mit Abschlusskommentar (Auto-Close greift bei `dev`-Merges nicht).
+
+**Warum so streng:** Der Loop hat in PR #167 (`Closes #63`) einen tautologischen `assertSame(null, null)`-Test gefangen, der ohne Review auf `dev` gelandet wäre und alle nachfolgenden PRD-005-Issues mit falschen Annahmen über Env-Wiring belastet hätte. Der Aufwand pro Issue (~5–10 min) ist proportional zum Nutzen.
+
+---
+
 ## Bekannte Fehler & Fixes
 
 Nicht-triviale Fehler, in die wir im Projekt schon einmal gelaufen sind, werden in [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) gesammelt – mit Symptom, Ursache, Fix, Datum, Tags und PR-Referenz. Vor dem Debuggen eines diffusen Bugs (z. B. „Inertia-Klick passiert nichts", „Navigation crasht stumm") lohnt sich ein Blick in die Datei: wahrscheinlich sind wir schon einmal darüber gestolpert.
