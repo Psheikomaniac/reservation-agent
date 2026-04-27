@@ -178,6 +178,14 @@ Details und der vollständige Issue-Workflow stehen in [`CLAUDE.md`](CLAUDE.md).
 
 ---
 
+## Bekannte Fehler & Fixes
+
+Nicht-triviale Fehler, in die wir im Projekt schon einmal gelaufen sind, werden in [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) gesammelt – mit Symptom, Ursache, Fix, Datum, Tags und PR-Referenz. Vor dem Debuggen eines diffusen Bugs (z. B. „Inertia-Klick passiert nichts", „Navigation crasht stumm") lohnt sich ein Blick in die Datei: wahrscheinlich sind wir schon einmal darüber gestolpert.
+
+Wenn du selbst auf einen Fehler triffst, der mehr als 10 Minuten Suche gekostet hat oder dessen Ursache nicht aus dem Code-Diff ersichtlich war: **Eintrag ergänzen** (Vorlage steht oben in der Datei). So wird die nächste Suche kürzer.
+
+---
+
 ## Status
 
 - ✅ Konzept & PRDs (V1.0)

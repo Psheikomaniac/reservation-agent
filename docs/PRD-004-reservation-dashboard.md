@@ -201,7 +201,7 @@ Keine `fetch`/`axios` – ausschließlich `router.reload({ only: [...] })`.
 
 ## Risiken & offene Fragen
 
-- **Polling vs. Websockets** – V1.0 nutzt Polling, weil es einfach ist und keine zusätzliche Infrastruktur braucht. Bei > 50 aktiven Tabs pro Restaurant könnte das DB-Last erzeugen. Websockets / Laravel Reverb kommt in V2.0, wenn Bedarf da ist.
+- **Polling vs. Websockets** – V1.0-Entscheidung dokumentiert in [`docs/decisions/polling-vs-websockets-v1.md`](decisions/polling-vs-websockets-v1.md). V1.0 nutzt Polling; konkrete Trigger-Schwellen für die Umstellung auf Laravel Reverb sind dort festgelegt (aktive Tabs, DB-QPS, p95-Latenz, DB-CPU).
 - **Performance bei > 10.000 Reservierungen** – Paginierung + Index auf `(restaurant_id, status, created_at)` sollte reichen. Benchmarken vor Pilot.
 - **Flutuation durch Polling** – wenn sich die Liste beim Poll verschiebt, kann die UI ungewollt springen. Lösung: Selektion per `id` persistieren, nicht per Zeilen-Index.
 - **Timezone-Anzeige** – `desired_at` liegt in UTC. Im Frontend muss die Anzeige in der Restaurant-Zeitzone erfolgen; die Zeitzone wird als Inertia Shared Prop (aus Restaurant) bereitgestellt.

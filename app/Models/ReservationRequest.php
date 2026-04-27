@@ -7,6 +7,7 @@ use App\Enums\ReservationStatus;
 use App\Models\Scopes\RestaurantScope;
 use Database\Factories\ReservationRequestFactory;
 use Illuminate\Database\Eloquent\Attributes\ScopedBy;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -38,6 +39,7 @@ class ReservationRequest extends Model
         'message',
         'raw_payload',
         'needs_manual_review',
+        'email_message_id',
     ];
 
     /**
@@ -79,5 +81,45 @@ class ReservationRequest extends Model
     public function latestReply(): HasOne
     {
         return $this->hasOne(ReservationReply::class)->latestOfMany('created_at');
+    }
+
+    /**
+     * Apply the dashboard filter set validated by DashboardFilterRequest.
+     *
+     * Every field is mapped explicitly — no dynamic column/operator
+     * construction — so only keys the FormRequest approves can influence
+     * the query.
+     *
+     * @param  Builder<self>  $query
+     * @param  array<string, mixed>  $filters
+     * @return Builder<self>
+     */
+    public function scopeFilter(Builder $query, array $filters): Builder
+    {
+        if (! empty($filters['status'])) {
+            $query->whereIn('status', $filters['status']);
+        }
+
+        if (! empty($filters['source'])) {
+            $query->whereIn('source', $filters['source']);
+        }
+
+        if (! empty($filters['from'])) {
+            $query->where('desired_at', '>=', $filters['from']);
+        }
+
+        if (! empty($filters['to'])) {
+            $query->where('desired_at', '<=', $filters['to']);
+        }
+
+        if (! empty($filters['q'])) {
+            $needle = '%'.$filters['q'].'%';
+            $query->where(function (Builder $inner) use ($needle): void {
+                $inner->where('guest_name', 'like', $needle)
+                    ->orWhere('guest_email', 'like', $needle);
+            });
+        }
+
+        return $query;
     }
 }
