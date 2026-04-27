@@ -130,6 +130,15 @@ app/
 - **`Mail::fake()`** für Mail-Versand-Tests
 - **Fixture-Mails** für IMAP-Parser-Tests (Klartext, HTML, mit Umlauten, mit/ohne strukturierter Anfrage)
 
+### Frontend Tests (Vitest)
+
+- **Vitest** (Vite-nativ) für Composables, Pure-Helper und Component-Wiring – pendant zu Pest auf der PHP-Seite. Konfiguration in `vitest.config.ts`, Environment `happy-dom`, Aliase identisch zu Vite (`@/` → `resources/js/`).
+- **`@vue/test-utils`** für Component-Tests, die einen Konsumenten-Wrapper mounten, statt die volle Inertia/Ziggy/Layout-Pipeline einzuziehen (siehe `resources/js/composables/useRowSelection.component.test.ts` als Referenz-Pattern).
+- **Fake Timer** (`vi.useFakeTimers()` / `vi.advanceTimersByTimeAsync`) für zeitbasierte Composables wie `usePagePolling` – nie echte Wartezeiten in Tests.
+- **Visibility / Polling**: zeitbasierte Composables nehmen den Visibility-State als optionalen Ref-Parameter, damit Tests deterministisch zwischen `visible`/`hidden` umschalten können, ohne `document` zu mutieren (Beispiel: `usePagePolling`).
+- **CI-Trennung**: `composer test` triggert **kein** Vitest. PHP-Tests laufen über `php artisan test`, JS-Tests über `npm run test`. CI führt beide aus.
+- **Reichweite**: Vitest ersetzt nicht Pest-Feature-Tests für Server-Verhalten – es testet ausschließlich Client-Logik. API-Contracts (Resource-Shape, Shared Props) gehören weiterhin in Pest.
+
 ### Was MUSS getestet werden
 
 **`ReservationContextBuilder`:**

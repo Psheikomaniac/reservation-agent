@@ -5,6 +5,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { usePagePolling } from '@/composables/usePagePolling';
 import { useRowSelection } from '@/composables/useRowSelection';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { formatDateTime } from '@/lib/format-datetime';
@@ -19,7 +20,6 @@ import {
     type SharedData,
 } from '@/types';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { useDocumentVisibility, useIntervalFn } from '@vueuse/core';
 import { ChevronDown, Info } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 
@@ -224,25 +224,7 @@ function pollOnly(): string[] {
     return keys;
 }
 
-const visibility = useDocumentVisibility();
-
-const { pause: pausePolling, resume: resumePolling } = useIntervalFn(
-    () => router.reload({ only: pollOnly(), preserveScroll: true, preserveState: true }),
-    POLL_MS,
-    { immediate: false, immediateCallback: false },
-);
-
-if (visibility.value === 'visible') {
-    resumePolling();
-}
-
-watch(visibility, (state) => {
-    if (state === 'visible') {
-        resumePolling();
-    } else {
-        pausePolling();
-    }
-});
+usePagePolling(() => router.reload({ only: pollOnly(), preserveScroll: true, preserveState: true }), POLL_MS);
 </script>
 
 <template>
