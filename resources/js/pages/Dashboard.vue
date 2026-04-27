@@ -274,7 +274,12 @@ function submitApproval(): void {
         return;
     }
 
-    const original = reply.body;
+    // Trim both sides so a whitespace-only "edit" doesn't get persisted
+    // as a real operator edit. `isEdited` and the diff panel use the
+    // same convention; mismatching here would let the button relabel
+    // itself to "Bearbeitete Version senden" yet still send the
+    // original body, or vice versa.
+    const original = reply.body.trim();
     const edited = replyBody.value.trim();
     const payload = edited !== '' && edited !== original ? { body: edited } : {};
 
