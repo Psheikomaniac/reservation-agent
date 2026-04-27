@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace App\Services\AI;
 
+use App\Exceptions\AI\OpenAiAuthenticationException;
+use App\Exceptions\AI\OpenAiRateLimitException;
 use App\Services\AI\Contracts\ReplyGenerator;
 use OpenAI\Contracts\ClientContract;
+use OpenAI\Exceptions\ErrorException;
+use OpenAI\Exceptions\RateLimitException;
 use Psr\Log\LoggerInterface;
 use Throwable;
 
@@ -14,11 +18,14 @@ use Throwable;
  * `ReservationContextBuilder`) into a German reply text via OpenAI Chat
  * Completions.
  *
- * On ANY error path — empty completion, network failure, 401, 429, 5xx,
- * timeout, malformed payload — the generator returns the same neutral
- * fallback so the caller never raises and the AI prompt branch always
- * yields a string. The granular error matrix (admin notification on 401,
- * one retry on 429) lives outside this service in #71.
+ * Error matrix (PRD-005 / #71):
+ *   - HTTP 401 or RateLimit/Server errors are classified as
+ *     `OpenAiAuthenticationException` / `OpenAiRateLimitException` and
+ *     RETHROWN so the job layer can drive the admin notification (#76)
+ *     and the one-retry policy.
+ *   - Every other error path — empty completion, network failure, 5xx,
+ *     timeout, malformed payload — returns the neutral fallback so the
+ *     caller never raises.
  *
  * Logging hygiene: only `$e->getMessage()` is logged. No API key, no
  * Authorization header, no full context payload, no guest data.
@@ -55,6 +62,23 @@ final class OpenAiReplyGenerator implements ReplyGenerator
             $content = trim((string) ($response->choices[0]->message->content ?? ''));
 
             return $content !== '' ? $content : self::FALLBACK_TEXT;
+        } catch (ErrorException $e) {
+            $this->logger->warning('openai reply generation failed', [
+                'status' => $e->getStatusCode(),
+                'error' => $e->getErrorMessage(),
+            ]);
+
+            if ($e->getStatusCode() === 401) {
+                throw new OpenAiAuthenticationException;
+            }
+
+            return self::FALLBACK_TEXT;
+        } catch (RateLimitException $e) {
+            $this->logger->warning('openai reply generation rate-limited', [
+                'error' => $e->getMessage(),
+            ]);
+
+            throw new OpenAiRateLimitException;
         } catch (Throwable $e) {
             $this->logger->warning('openai reply generation failed', [
                 'error' => $e->getMessage(),
