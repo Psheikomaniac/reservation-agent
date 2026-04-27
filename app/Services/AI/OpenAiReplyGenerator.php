@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\AI;
 
+use App\Services\AI\Contracts\ReplyGenerator;
 use OpenAI\Contracts\ClientContract;
 use Psr\Log\LoggerInterface;
 use Throwable;
@@ -22,7 +23,7 @@ use Throwable;
  * Logging hygiene: only `$e->getMessage()` is logged. No API key, no
  * Authorization header, no full context payload, no guest data.
  */
-final class OpenAiReplyGenerator
+final class OpenAiReplyGenerator implements ReplyGenerator
 {
     public const string FALLBACK_TEXT = 'Vielen Dank für Ihre Anfrage. Wir melden uns in Kürze persönlich bei Ihnen.';
 
