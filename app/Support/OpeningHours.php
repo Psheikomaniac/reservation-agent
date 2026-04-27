@@ -84,6 +84,20 @@ final class OpeningHours
      *   'ruhetag'                     → no opening blocks for this weekday
      *   'ausserhalb_oeffnungszeiten'  → outside the day's opening blocks
      */
+    /**
+     * Opening blocks for the restaurant-local day that contains $time.
+     * Returns an empty array on a Ruhetag.
+     *
+     * @return array<int, array{from: string, to: string}>
+     */
+    public function blocksAt(CarbonInterface $time): array
+    {
+        $local = $time->copy()->setTimezone($this->timezone);
+        $dayKey = self::DAY_KEYS[(int) $local->dayOfWeek];
+
+        return $this->schedule[$dayKey] ?? [];
+    }
+
     public function closedReasonAt(CarbonInterface $time): ?string
     {
         if ($this->isOpenAt($time)) {

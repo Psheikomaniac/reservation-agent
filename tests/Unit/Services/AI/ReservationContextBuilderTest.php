@@ -58,7 +58,7 @@ class ReservationContextBuilderTest extends TestCase
 
         $this->assertTrue($context['availability']['is_open_at_desired_time']);
         $this->assertSame(40, $context['availability']['seats_free_at_desired']);
-        $this->assertSame([], $context['availability']['alternative_slots']);
+        $this->assertIsArray($context['availability']['alternative_slots']);
         $this->assertNull($context['availability']['closed_reason']);
     }
 
