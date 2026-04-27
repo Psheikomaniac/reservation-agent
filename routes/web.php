@@ -19,6 +19,10 @@ Route::get('reservations/{reservation}', [ReservationRequestController::class, '
     ->middleware(['auth', 'verified'])
     ->name('reservations.show');
 
+Route::post('reservations/bulk-status', [ReservationRequestController::class, 'bulkStatus'])
+    ->middleware(['auth', 'verified'])
+    ->name('reservations.bulk-status');
+
 Route::get('r/{restaurant:slug}/reservations', [PublicReservationController::class, 'create'])
     ->name('public.reservations.create');
 
