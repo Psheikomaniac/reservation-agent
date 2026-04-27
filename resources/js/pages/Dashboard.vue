@@ -7,6 +7,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useRowSelection } from '@/composables/useRowSelection';
 import AppLayout from '@/layouts/AppLayout.vue';
+import { formatDateTime } from '@/lib/format-datetime';
 import {
     type BreadcrumbItem,
     type DashboardFilters,
@@ -37,6 +38,7 @@ const breadcrumbs: BreadcrumbItem[] = [{ title: 'Dashboard', href: '/dashboard' 
 
 const page = usePage<SharedData>();
 const restaurantName = computed(() => page.props.restaurant?.name ?? '');
+const restaurantTimezone = computed(() => page.props.restaurant?.timezone);
 
 const STATUS_OPTIONS: { value: ReservationStatus; label: string }[] = [
     { value: 'new', label: 'Neu' },
@@ -160,20 +162,8 @@ const hasActiveFilters = computed(() => {
     );
 });
 
-function formatDateTime(iso: string | null): string {
-    if (!iso) {
-        return '–';
-    }
-
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) {
-        return '–';
-    }
-
-    return new Intl.DateTimeFormat('de-DE', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-    }).format(date);
+function renderTime(iso: string | null): string {
+    return formatDateTime(iso, { timeZone: restaurantTimezone.value });
 }
 
 function detailHref(rowId: number | null): string {
@@ -403,9 +393,9 @@ watch(visibility, (state) => {
                                 />
                             </td>
                             <td class="whitespace-nowrap px-3 py-2 text-muted-foreground">
-                                {{ formatDateTime(row.created_at) }}
+                                {{ renderTime(row.created_at) }}
                             </td>
-                            <td class="whitespace-nowrap px-3 py-2">{{ formatDateTime(row.desired_at) }}</td>
+                            <td class="whitespace-nowrap px-3 py-2">{{ renderTime(row.desired_at) }}</td>
                             <td class="px-3 py-2">{{ row.party_size }}</td>
                             <td class="px-3 py-2">{{ row.guest_name }}</td>
                             <td class="px-3 py-2 text-xs text-muted-foreground">{{ SOURCE_LABEL[row.source] }}</td>
@@ -511,10 +501,10 @@ watch(visibility, (state) => {
 
                 <dl class="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-2 text-sm" data-testid="reservation-detail-fields">
                     <dt class="font-medium text-muted-foreground">Eingegangen</dt>
-                    <dd>{{ formatDateTime(props.selectedRequest.created_at) }}</dd>
+                    <dd>{{ renderTime(props.selectedRequest.created_at) }}</dd>
 
                     <dt class="font-medium text-muted-foreground">Wunschzeit</dt>
-                    <dd>{{ formatDateTime(props.selectedRequest.desired_at) }}</dd>
+                    <dd>{{ renderTime(props.selectedRequest.desired_at) }}</dd>
 
                     <dt class="font-medium text-muted-foreground">Personen</dt>
                     <dd>{{ props.selectedRequest.party_size }}</dd>

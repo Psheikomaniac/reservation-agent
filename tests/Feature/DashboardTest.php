@@ -55,6 +55,32 @@ class DashboardTest extends TestCase
             );
     }
 
+    public function test_dashboard_emits_desired_at_as_utc_iso_for_restaurant_timezone_rendering(): void
+    {
+        // The client renders desired_at in restaurant-local time using the shared
+        // restaurant.timezone prop (see resources/js/lib/format-datetime.ts).
+        // That requires the API to keep emitting UTC ISO-8601 unconditionally.
+        $restaurant = Restaurant::factory()->create(['timezone' => 'Europe/Berlin']);
+        $user = User::factory()->forRestaurant($restaurant)->create();
+
+        // 18:00 UTC is 20:00 in Berlin during DST. The payload must remain UTC.
+        $desiredAt = Carbon::parse('2025-06-15T18:00:00Z');
+
+        ReservationRequest::factory()
+            ->forRestaurant($restaurant)
+            ->create(['desired_at' => $desiredAt, 'status' => ReservationStatus::New]);
+
+        $this->actingAs($user)
+            ->get('/dashboard?clear=1&status[]=new')
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Dashboard')
+                ->where('restaurant.timezone', 'Europe/Berlin')
+                ->where('requests.data.0.desired_at', $desiredAt->toIso8601String())
+                ->etc()
+            );
+    }
+
     public function test_user_without_restaurant_receives_null_restaurant_prop(): void
     {
         $user = User::factory()->create(['restaurant_id' => null]);
