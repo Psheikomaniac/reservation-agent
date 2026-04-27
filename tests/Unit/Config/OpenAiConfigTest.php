@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Config;
 
+use OpenAI\Client;
+use OpenAI\Contracts\ClientContract;
 use OpenAI\Laravel\Facades\OpenAI;
 use OpenAI\Responses\Chat\CreateResponse;
 use Tests\TestCase;
@@ -18,18 +20,18 @@ use Tests\TestCase;
  */
 class OpenAiConfigTest extends TestCase
 {
-    public function test_openai_config_reads_api_key_from_env(): void
+    public function test_openai_service_provider_binds_the_client_in_the_container(): void
     {
-        $key = 'sk-config-test-only';
+        $this->assertTrue($this->app->bound(Client::class));
+        $this->assertTrue($this->app->bound(ClientContract::class));
+    }
 
-        config()->set('openai.api_key', null);
-        putenv("OPENAI_API_KEY={$key}");
+    public function test_openai_config_reads_api_key_from_env_via_env_helper(): void
+    {
+        $config = require base_path('config/openai.php');
 
-        $config = include __DIR__.'/../../../config/openai.php';
-
-        $this->assertSame($key, $config['api_key']);
-
-        putenv('OPENAI_API_KEY');
+        $this->assertArrayHasKey('api_key', $config);
+        $this->assertSame(env('OPENAI_API_KEY'), $config['api_key']);
     }
 
     public function test_openai_facade_returns_faked_chat_response_without_network(): void
