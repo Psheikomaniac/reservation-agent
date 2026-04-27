@@ -103,3 +103,9 @@ export interface DashboardStats {
     new: number;
     in_review: number;
 }
+
+export interface ReservationRequestDetail extends ReservationRequestRow {
+    message: string | null;
+    raw_payload: Record<string, unknown> | null;
+    raw_email_body: string | null;
+}

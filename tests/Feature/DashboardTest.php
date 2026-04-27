@@ -325,4 +325,141 @@ class DashboardTest extends TestCase
                 ->etc()
             );
     }
+
+    public function test_selected_request_is_null_without_query_param(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $user = User::factory()->forRestaurant($restaurant)->create();
+        ReservationRequest::factory()->forRestaurant($restaurant)->create();
+
+        $this->actingAs($user)
+            ->get('/dashboard')
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Dashboard')
+                ->where('selectedRequest', null)
+            );
+    }
+
+    public function test_selected_request_carries_detail_resource_shape_for_email_source(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $user = User::factory()->forRestaurant($restaurant)->create();
+        $reservation = ReservationRequest::factory()
+            ->forRestaurant($restaurant)
+            ->create([
+                'source' => ReservationSource::Email,
+                'guest_name' => 'Anna Probe',
+                'message' => 'Allergie: Nüsse',
+                'raw_payload' => [
+                    'body' => "Hallo,\nbitte für 4 Personen am Freitag.",
+                    'sender_email' => 'guest@example.test',
+                    'sender_name' => 'Anna Probe',
+                    'message_id' => '<abc@example.test>',
+                ],
+            ]);
+
+        $this->actingAs($user)
+            ->get("/dashboard?selected={$reservation->id}")
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Dashboard')
+                ->where('selectedRequest.id', $reservation->id)
+                ->where('selectedRequest.guest_name', 'Anna Probe')
+                ->where('selectedRequest.message', 'Allergie: Nüsse')
+                ->where('selectedRequest.has_raw_email', true)
+                ->where('selectedRequest.raw_email_body', "Hallo,\nbitte für 4 Personen am Freitag.")
+                ->where('selectedRequest.raw_payload.sender_email', 'guest@example.test')
+            );
+    }
+
+    public function test_selected_request_for_web_form_does_not_expose_raw_email_body(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $user = User::factory()->forRestaurant($restaurant)->create();
+        $reservation = ReservationRequest::factory()
+            ->forRestaurant($restaurant)
+            ->create([
+                'source' => ReservationSource::WebForm,
+                'raw_payload' => ['guest_name' => 'Anna Probe', 'party_size' => 4],
+            ]);
+
+        $this->actingAs($user)
+            ->get("/dashboard?selected={$reservation->id}")
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('selectedRequest.has_raw_email', false)
+                ->where('selectedRequest.raw_email_body', null)
+                ->where('selectedRequest.raw_payload.guest_name', 'Anna Probe')
+            );
+    }
+
+    public function test_selected_request_is_null_for_foreign_tenant(): void
+    {
+        [$restaurantA, $restaurantB] = Restaurant::factory()->count(2)->create();
+        $userA = User::factory()->forRestaurant($restaurantA)->create();
+        $foreignReservation = ReservationRequest::factory()
+            ->forRestaurant($restaurantB)
+            ->create(['guest_name' => 'Foreign Guest']);
+
+        $this->actingAs($userA)
+            ->get("/dashboard?selected={$foreignReservation->id}")
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Dashboard')
+                ->where('selectedRequest', null)
+            )
+            ->assertDontSee('Foreign Guest');
+    }
+
+    public function test_selected_request_is_null_for_unknown_id(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $user = User::factory()->forRestaurant($restaurant)->create();
+
+        $this->actingAs($user)
+            ->get('/dashboard?selected=999999')
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Dashboard')
+                ->where('selectedRequest', null)
+            );
+    }
+
+    public function test_selected_param_alone_does_not_clear_default_filters(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $user = User::factory()->forRestaurant($restaurant)->create();
+        $today = Carbon::now($restaurant->timezone)->startOfDay()->toDateString();
+
+        $reservation = ReservationRequest::factory()
+            ->forRestaurant($restaurant)
+            ->create();
+
+        $this->actingAs($user)
+            ->get("/dashboard?selected={$reservation->id}")
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('filters.status', [
+                    ReservationStatus::New->value,
+                    ReservationStatus::InReview->value,
+                ])
+                ->where('filters.from', $today)
+                ->etc()
+            );
+    }
+
+    // No HTTP-level partial-reload test: Inertia's `only` filtering is
+    // framework behaviour. The application-level guarantee is that
+    // `selectedRequest` is wired as a closure, which Inertia evaluates
+    // lazily — covered indirectly by the `?selected=` tests above.
+
+    public function test_invalid_selected_param_is_rejected_by_validation(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $user = User::factory()->forRestaurant($restaurant)->create();
+
+        $this->actingAs($user)
+            ->get('/dashboard?selected=not-a-number')
+            ->assertSessionHasErrors('selected');
+    }
 }

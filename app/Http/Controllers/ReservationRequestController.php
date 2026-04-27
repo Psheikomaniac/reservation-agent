@@ -4,26 +4,18 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
-use App\Http\Resources\ReservationRequestDetailResource;
-use App\Models\ReservationRequest;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Gate;
-use Inertia\Inertia;
-use Inertia\Response;
+use Illuminate\Http\RedirectResponse;
 
 final class ReservationRequestController extends Controller
 {
-    public function show(Request $request, int $reservation): Response
+    /**
+     * Deep-link redirect into the dashboard detail drawer. The drawer
+     * (DashboardController@index with `?selected={id}`) handles policy
+     * enforcement: invalid or foreign-tenant ids resolve to a null
+     * `selectedRequest` prop so the drawer simply does not open.
+     */
+    public function show(int $reservation): RedirectResponse
     {
-        $reservationRequest = ReservationRequest::query()
-            ->withoutGlobalScopes()
-            ->findOrFail($reservation);
-
-        Gate::authorize('view', $reservationRequest);
-
-        return Inertia::render('Reservations/Show', [
-            'reservation' => (new ReservationRequestDetailResource($reservationRequest))
-                ->toArray($request),
-        ]);
+        return redirect()->route('dashboard', ['selected' => $reservation]);
     }
 }
