@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useRowSelection } from '@/composables/useRowSelection';
 import AppLayout from '@/layouts/AppLayout.vue';
 import {
     type BreadcrumbItem,
@@ -202,6 +204,16 @@ const drawerOpen = computed({
 
 const rawEmailOpen = ref(false);
 
+const selection = useRowSelection();
+const visibleRowIds = computed(() => props.requests.data.map((row) => row.id));
+const headerCheckedModel = computed<boolean | 'indeterminate'>(() => {
+    if (selection.isVisibleIndeterminate(visibleRowIds.value)) {
+        return 'indeterminate';
+    }
+
+    return selection.isVisibleAllSelected(visibleRowIds.value);
+});
+
 watch(
     () => props.selectedRequest?.id,
     () => {
@@ -346,10 +358,31 @@ watch(visibility, (state) => {
                 <p class="mt-1 text-sm text-muted-foreground">Es gibt aktuell keine Anfragen, die zu deinen Filtern passen.</p>
             </section>
 
-            <section v-else class="overflow-x-auto rounded-lg border border-border" data-testid="reservations-table">
+            <section
+                v-if="props.requests.data.length > 0 && selection.count.value > 0"
+                class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2 text-sm"
+                data-testid="bulk-select-toolbar"
+                aria-live="polite"
+            >
+                <span class="font-medium" data-testid="bulk-select-count">Ausgewählt: {{ selection.count.value }}</span>
+                <Button type="button" variant="ghost" size="sm" data-testid="bulk-select-clear" @click="selection.clear()"> Auswahl aufheben </Button>
+            </section>
+
+            <section v-if="props.requests.data.length > 0" class="overflow-x-auto rounded-lg border border-border" data-testid="reservations-table">
                 <table class="w-full text-left text-sm">
+                    <colgroup>
+                        <col class="w-10" />
+                    </colgroup>
                     <thead class="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
                         <tr>
+                            <th class="px-3 py-2 font-medium">
+                                <Checkbox
+                                    :checked="headerCheckedModel"
+                                    aria-label="Alle sichtbaren Reservierungen auswählen"
+                                    data-testid="bulk-select-header"
+                                    @update:checked="selection.toggleAllVisible(visibleRowIds)"
+                                />
+                            </th>
                             <th class="px-3 py-2 font-medium">Eingegangen</th>
                             <th class="px-3 py-2 font-medium">Wunschzeit</th>
                             <th class="px-3 py-2 font-medium">Personen</th>
@@ -361,6 +394,14 @@ watch(visibility, (state) => {
                     </thead>
                     <tbody class="divide-y divide-border">
                         <tr v-for="row in props.requests.data" :key="row.id" class="hover:bg-muted/30" :data-testid="`reservation-row-${row.id}`">
+                            <td class="px-3 py-2">
+                                <Checkbox
+                                    :checked="selection.isSelected(row.id)"
+                                    :aria-label="`Reservierung ${row.guest_name} auswählen`"
+                                    :data-testid="`bulk-select-row-${row.id}`"
+                                    @update:checked="selection.toggle(row.id)"
+                                />
+                            </td>
                             <td class="whitespace-nowrap px-3 py-2 text-muted-foreground">
                                 {{ formatDateTime(row.created_at) }}
                             </td>
