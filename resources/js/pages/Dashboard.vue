@@ -16,8 +16,11 @@ import {
     type SharedData,
 } from '@/types';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
+import { useDocumentVisibility, useIntervalFn } from '@vueuse/core';
 import { ChevronDown, Info } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
+
+const POLL_MS = 30_000;
 
 interface DashboardProps {
     filters: DashboardFilters;
@@ -205,6 +208,34 @@ watch(
         rawEmailOpen.value = false;
     },
 );
+
+function pollOnly(): string[] {
+    const keys = ['requests', 'stats'];
+    if (props.selectedRequest != null) {
+        keys.push('selectedRequest');
+    }
+    return keys;
+}
+
+const visibility = useDocumentVisibility();
+
+const { pause: pausePolling, resume: resumePolling } = useIntervalFn(
+    () => router.reload({ only: pollOnly(), preserveScroll: true, preserveState: true }),
+    POLL_MS,
+    { immediate: false, immediateCallback: false },
+);
+
+if (visibility.value === 'visible') {
+    resumePolling();
+}
+
+watch(visibility, (state) => {
+    if (state === 'visible') {
+        resumePolling();
+    } else {
+        pausePolling();
+    }
+});
 </script>
 
 <template>
