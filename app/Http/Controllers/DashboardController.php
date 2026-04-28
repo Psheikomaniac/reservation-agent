@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Enums\ReservationStatus;
+use App\Enums\UserRole;
 use App\Http\Requests\DashboardFilterRequest;
 use App\Http\Resources\ReservationRequestDetailResource;
 use App\Http\Resources\ReservationRequestResource;
 use App\Models\ReservationRequest;
+use App\Support\OpenAiKeyHealth;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
@@ -46,6 +48,12 @@ final class DashboardController extends Controller
                     ->count(),
             ],
             'selectedRequest' => fn () => $this->resolveSelected($selectedId, $request),
+            // Owner-only banner. The flag is global (V1.0 has one OpenAI key
+            // app-wide); dismissing-by-user is intentionally NOT supported
+            // (issue #76) so a stale alert can't outlive a still-broken key.
+            'openaiKeyRejectedAt' => $request->user()?->role === UserRole::Owner
+                ? OpenAiKeyHealth::rejectedAt()
+                : null,
         ]);
     }
 
@@ -57,6 +65,7 @@ final class DashboardController extends Controller
 
         $reservation = ReservationRequest::query()
             ->withoutGlobalScopes()
+            ->with(['latestReply'])
             ->find($id);
 
         if ($reservation === null || ! Gate::forUser($request->user())->allows('view', $reservation)) {

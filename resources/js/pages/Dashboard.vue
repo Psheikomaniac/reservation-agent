@@ -9,6 +9,7 @@ import { usePagePolling } from '@/composables/usePagePolling';
 import { useRowSelection } from '@/composables/useRowSelection';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { formatDateTime } from '@/lib/format-datetime';
+import { type DiffLine, lineDiff } from '@/lib/line-diff';
 import {
     type BreadcrumbItem,
     type DashboardFilters,
@@ -30,6 +31,7 @@ interface DashboardProps {
     requests: PaginatedReservationRequests;
     stats: DashboardStats;
     selectedRequest?: ReservationRequestDetail | null;
+    openaiKeyRejectedAt?: string | null;
 }
 
 const props = defineProps<DashboardProps>();
@@ -194,6 +196,107 @@ const drawerOpen = computed({
 
 const rawEmailOpen = ref(false);
 
+const REPLY_STATUS_LABEL: Record<'draft' | 'approved' | 'sent' | 'failed', string> = {
+    draft: 'KI-Vorschlag verfügbar',
+    approved: 'Wird versendet',
+    sent: 'Versendet',
+    failed: 'Versand fehlgeschlagen',
+};
+
+const REPLY_STATUS_BADGE: Record<'draft' | 'approved' | 'sent' | 'failed', string> = {
+    draft: 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200',
+    approved: 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-200',
+    sent: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200',
+    failed: 'bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-200',
+};
+
+const replyBody = ref('');
+const approving = ref(false);
+const diffOpen = ref(false);
+
+const DIFF_PREFIX: Record<'added' | 'removed' | 'context', string> = {
+    added: '+',
+    removed: '−',
+    context: ' ',
+};
+
+// Per-reply scratchpad. Switching rows must NOT silently lose an
+// in-progress edit, so unsaved bodies are stashed by reply.id and
+// restored when the operator comes back. Polling that re-broadcasts
+// the same reply.id is also a no-op against this cache.
+const replyEditCache = ref<Record<number, string>>({});
+
+const currentReplyId = computed(() => props.selectedRequest?.latest_reply?.id ?? null);
+
+const isReplyEditable = computed(() => {
+    const reply = props.selectedRequest?.latest_reply;
+    return reply !== null && reply !== undefined && reply.status === 'draft';
+});
+
+const isEdited = computed(() => {
+    const reply = props.selectedRequest?.latest_reply;
+    if (!reply) {
+        return false;
+    }
+    return replyBody.value.trim() !== reply.body.trim();
+});
+
+const replyDiff = computed<DiffLine[]>(() => {
+    const reply = props.selectedRequest?.latest_reply;
+    if (!reply) {
+        return [];
+    }
+    return lineDiff(reply.body, replyBody.value);
+});
+
+watch(
+    currentReplyId,
+    (id, prevId) => {
+        // Stash the body the operator was editing before we switch.
+        if (typeof prevId === 'number') {
+            replyEditCache.value[prevId] = replyBody.value;
+        }
+
+        if (typeof id !== 'number') {
+            replyBody.value = '';
+            return;
+        }
+
+        const cached = replyEditCache.value[id];
+        replyBody.value = cached ?? props.selectedRequest?.latest_reply?.body ?? '';
+    },
+    { immediate: true },
+);
+
+function submitApproval(): void {
+    const reply = props.selectedRequest?.latest_reply;
+    if (!reply || reply.status !== 'draft') {
+        return;
+    }
+
+    // Trim both sides so a whitespace-only "edit" doesn't get persisted
+    // as a real operator edit. `isEdited` and the diff panel use the
+    // same convention; mismatching here would let the button relabel
+    // itself to "Bearbeitete Version senden" yet still send the
+    // original body, or vice versa.
+    const original = reply.body.trim();
+    const edited = replyBody.value.trim();
+    const payload = edited !== '' && edited !== original ? { body: edited } : {};
+
+    approving.value = true;
+    router.post(route('reservation-replies.approve', { reply: reply.id }), payload, {
+        preserveScroll: true,
+        onSuccess: () => {
+            // The reply has been dispatched — drop the scratchpad so a
+            // subsequent re-open shows the canonical server-side body.
+            delete replyEditCache.value[reply.id];
+        },
+        onFinish: () => {
+            approving.value = false;
+        },
+    });
+}
+
 const selection = useRowSelection();
 const visibleRowIds = computed(() => props.requests.data.map((row) => row.id));
 const headerCheckedModel = computed<boolean | 'indeterminate'>(() => {
@@ -232,6 +335,21 @@ usePagePolling(() => router.reload({ only: pollOnly(), preserveScroll: true, pre
 
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="flex h-full flex-1 flex-col gap-6 p-6">
+            <div
+                v-if="props.openaiKeyRejectedAt"
+                class="flex items-start gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-100"
+                data-testid="openai-key-banner"
+            >
+                <Info class="mt-0.5 size-5 shrink-0" />
+                <div>
+                    <strong class="font-medium">OpenAI-Key prüfen</strong>
+                    <p class="leading-relaxed">
+                        Die letzte KI-Anfrage wurde mit HTTP 401 abgewiesen. Hinterlege einen gültigen API-Key in der Umgebungs-Konfiguration. Sobald
+                        die nächste Antwort erfolgreich generiert wird, verschwindet dieser Hinweis automatisch.
+                    </p>
+                </div>
+            </div>
+
             <header class="flex flex-wrap items-end justify-between gap-4" data-testid="restaurant-header">
                 <div>
                     <h1 class="text-2xl font-semibold tracking-tight">{{ restaurantName }}</h1>
@@ -530,6 +648,68 @@ usePagePolling(() => router.reload({ only: pollOnly(), preserveScroll: true, pre
                         >
                     </CollapsibleContent>
                 </Collapsible>
+
+                <section v-if="props.selectedRequest.latest_reply" class="space-y-2 border-t border-border pt-4" data-testid="ai-reply-section">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-sm font-medium">KI-Antwortvorschlag</h3>
+                        <span
+                            class="rounded-full px-2 py-0.5 text-xs font-medium"
+                            :class="REPLY_STATUS_BADGE[props.selectedRequest.latest_reply.status]"
+                            data-testid="ai-reply-status"
+                        >
+                            {{ REPLY_STATUS_LABEL[props.selectedRequest.latest_reply.status] }}
+                        </span>
+                    </div>
+
+                    <textarea
+                        v-model="replyBody"
+                        :disabled="!isReplyEditable"
+                        rows="8"
+                        class="w-full resize-y rounded-md border border-border bg-background p-3 text-sm leading-relaxed disabled:cursor-not-allowed disabled:opacity-60"
+                        data-testid="ai-reply-textarea"
+                    ></textarea>
+
+                    <Collapsible v-if="isReplyEditable && isEdited" v-model:open="diffOpen" class="space-y-2" data-testid="ai-reply-diff-collapsible">
+                        <CollapsibleTrigger as-child>
+                            <Button variant="outline" size="sm" class="w-full justify-between" data-testid="ai-reply-diff-toggle">
+                                <span>Änderungen gegenüber dem KI-Vorschlag anzeigen</span>
+                                <ChevronDown class="size-4 transition-transform" :class="diffOpen ? 'rotate-180' : ''" />
+                            </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                            <ol class="space-y-1 rounded-md border border-border bg-muted/30 p-3 text-xs leading-relaxed" data-testid="ai-reply-diff">
+                                <li
+                                    v-for="(line, idx) in replyDiff"
+                                    :key="idx"
+                                    :class="{
+                                        'text-emerald-700 dark:text-emerald-400': line.kind === 'added',
+                                        'text-red-700 line-through dark:text-red-400': line.kind === 'removed',
+                                        'text-muted-foreground': line.kind === 'context',
+                                    }"
+                                >
+                                    <span class="select-none pr-2 font-mono">{{ DIFF_PREFIX[line.kind] }}</span>
+                                    <span class="whitespace-pre-wrap">{{ line.text || ' ' }}</span>
+                                </li>
+                            </ol>
+                        </CollapsibleContent>
+                    </Collapsible>
+
+                    <p
+                        v-if="props.selectedRequest.latest_reply.status === 'failed' && props.selectedRequest.latest_reply.error_message"
+                        class="text-xs text-red-600 dark:text-red-400"
+                        data-testid="ai-reply-error"
+                    >
+                        Versand fehlgeschlagen: {{ props.selectedRequest.latest_reply.error_message }}
+                    </p>
+
+                    <p v-if="props.selectedRequest.latest_reply.sent_at" class="text-xs text-muted-foreground" data-testid="ai-reply-sent-at">
+                        Versendet: {{ renderTime(props.selectedRequest.latest_reply.sent_at) }}
+                    </p>
+
+                    <Button v-if="isReplyEditable" :disabled="approving" class="w-full" data-testid="ai-reply-approve" @click="submitApproval">
+                        {{ isEdited ? 'Bearbeitete Version senden' : 'Freigeben & Versenden' }}
+                    </Button>
+                </section>
             </SheetContent>
         </Sheet>
     </AppLayout>
