@@ -1,0 +1,12 @@
+From: Anna Müller <anna.mueller@example.com>
+To: reservierung@restaurant.example
+Subject: Re: Reservierung am 12.05.
+Date: Wed, 29 Apr 2026 18:50:00 +0200
+Message-ID: <inbound-reply-heuristic-001@example.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Kein Threading-Header und kein Marker, aber der Subject passt zur letzten
+ausgehenden Mail dieser Reservierung und der Absender stimmt mit dem
+Gast-Mail überein.
