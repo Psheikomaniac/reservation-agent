@@ -47,7 +47,8 @@ Wichtig: PRD-008 ist **kein Datalake**. Aggregate werden direkt aus der OLTP-Tab
 - Trend-Chart: Thread-Replies pro Tag (PRD-006), als Indikator für Gast-Engagement
 - Server-seitige Aggregation in `AnalyticsAggregator`
 - 5-Minuten-Cache pro `(restaurant_id, range)`
-- Mandantentrennung über bestehenden `RestaurantScope` aus PRD-001
+- Mandantentrennung über bestehenden `RestaurantScope` aus PRD-001 bzw. `whereHas('reservationRequest', ...)`-Joins für Models ohne eigene `restaurant_id`-Spalte (siehe Hinweis unter „Edit-Rate")
+- **Erweiterung PRD-005-Snapshot**: Migration / Anpassung `OpenAiReplyGenerator`, sodass der ursprünglich generierte Body zusätzlich als `original_body` in `ai_prompt_snapshot` persistiert wird. Voraussetzung für Edit-Rate und Shadow-Übernahme-Statistik.
 
 ### Out of Scope
 
@@ -131,22 +132,25 @@ Bei MySQL 8 / PostgreSQL würde sich `PERCENTILE_CONT` anbieten – wird aber be
 
 **Edit-Rate (V2.0-spezifisch):**
 
-```php
-$total = ReservationReply::where('restaurant_id', $restaurant->id)
-    ->where('created_at', '>=', $range->startsAt())
-    ->whereIn('status', [ReservationReplyStatus::Sent, ReservationReplyStatus::Approved])
-    ->count();
+`reservation_replies` hat per PRD-001-Schema **keine eigene `restaurant_id`-Spalte** – die Mandantentrennung erfolgt über die `reservation_request_id`-Beziehung. Aggregat-Queries müssen entsprechend joinen, statt direkt zu filtern. SQLite-kompatibel via `json_extract` statt MySQL-spezifischem `->>`-Operator.
 
-$modified = ReservationReply::where('restaurant_id', $restaurant->id)
+```php
+$base = ReservationReply::query()
+    ->whereHas('reservationRequest', fn ($q) => $q->where('restaurant_id', $restaurant->id))
     ->where('created_at', '>=', $range->startsAt())
-    ->whereIn('status', [ReservationReplyStatus::Sent, ReservationReplyStatus::Approved])
-    ->whereColumn('body', '!=', DB::raw('ai_prompt_snapshot->>"$.original_body"'))
+    ->whereIn('status', [ReservationReplyStatus::Sent, ReservationReplyStatus::Approved]);
+
+$total    = (clone $base)->count();
+$modified = (clone $base)
+    ->whereColumn('body', '!=', DB::raw("json_extract(ai_prompt_snapshot, '\$.original_body')"))
     ->count();
 
 $rate = $total > 0 ? round($modified / $total * 100, 1) : 0.0;
 ```
 
-**Hinweis:** PRD-007 + diese Auswertung erfordern, dass `ai_prompt_snapshot` zusätzlich den **ursprünglich generierten Body** enthält (zum Vergleich). Das ist eine kleine Erweiterung von PRD-005 (Snapshot-Format), die in PRD-008 mitgeliefert wird.
+`json_extract(...)` funktioniert auf SQLite, MySQL 8+ und MariaDB. PostgreSQL braucht eine alternative Schreibweise (`ai_prompt_snapshot->>'original_body'`); falls Postgres als Prod-DB gewählt wird, kapselt der Aggregator das hinter einem Repository-Interface mit DB-spezifischen Implementationen. Solange MySQL 8 die Zielplattform bleibt (PRD-001 Risiken), reicht `json_extract`.
+
+**Hinweis:** Diese Auswertung erfordert, dass `ai_prompt_snapshot` zusätzlich den **ursprünglich generierten Body** enthält (zum Vergleich). Das ist eine kleine Erweiterung von PRD-005 (Snapshot-Format) und wird **als Migrations- und Codeschritt in der In-Scope-Liste oben** (`Erweiterung PRD-005-Snapshot um original_body`) mitgeführt.
 
 **Send-Mode-Stats:**
 
@@ -156,7 +160,8 @@ if ($restaurant->send_mode === SendMode::Manual) {
     return null;
 }
 
-$shadow = ReservationReply::where('restaurant_id', $restaurant->id)
+$shadow = ReservationReply::query()
+    ->whereHas('reservationRequest', fn ($q) => $q->where('restaurant_id', $restaurant->id))
     ->where('created_at', '>=', $range->startsAt())
     ->where('send_mode_at_creation', SendMode::Shadow);
 
@@ -174,6 +179,8 @@ $gates = AutoSendAudit::where('restaurant_id', $restaurant->id)
     ->limit(3)
     ->get();
 ```
+
+`AutoSendAudit` hat eine eigene `restaurant_id`-Spalte (siehe PRD-007-Datenmodell), deshalb dort der direkte Filter. `ReservationReply` joint über `reservationRequest`.
 
 ### Trend-Daten
 
