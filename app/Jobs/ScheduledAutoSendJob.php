@@ -63,7 +63,7 @@ final class ScheduledAutoSendJob implements ShouldQueue
             // Killswitch (or context loss) — cancel the schedule and
             // record why. No send goes out.
             $reply->forceFill(['status' => ReservationReplyStatus::CancelledAuto])->save();
-            $this->writeAudit(
+            AutoSendAudit::write(
                 $reply,
                 AutoSendAudit::DECISION_CANCELLED_AUTO,
                 AutoSendAudit::REASON_KILLSWITCH_DURING_WINDOW,
@@ -78,7 +78,7 @@ final class ScheduledAutoSendJob implements ShouldQueue
             // can take over via the V1.0 manual flow; the reason from
             // the decider is preserved in the audit.
             $reply->forceFill(['status' => ReservationReplyStatus::Draft])->save();
-            $this->writeAudit(
+            AutoSendAudit::write(
                 $reply,
                 AutoSendAudit::DECISION_CANCELLED_AUTO,
                 AutoSendAudit::REASON_HARD_GATE_LATE_PREFIX.$decision->reason,
@@ -88,23 +88,5 @@ final class ScheduledAutoSendJob implements ShouldQueue
         }
 
         SendReservationReplyJob::dispatchSync($reply->id);
-    }
-
-    private function writeAudit(ReservationReply $reply, string $decision, string $reason): void
-    {
-        $request = $reply->reservationRequest;
-        if ($request === null) {
-            return;
-        }
-
-        AutoSendAudit::create([
-            'reservation_reply_id' => $reply->id,
-            'restaurant_id' => $request->restaurant_id,
-            'send_mode' => SendMode::Auto->value,
-            'decision' => $decision,
-            'reason' => $reason,
-            'triggered_by_user_id' => null,
-            'created_at' => now(),
-        ]);
     }
 }

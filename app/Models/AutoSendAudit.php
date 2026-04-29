@@ -6,6 +6,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use RuntimeException;
 
 /**
  * Append-only audit row for every auto-send decision (PRD-007).
@@ -72,5 +73,43 @@ class AutoSendAudit extends Model
     public function restaurant(): BelongsTo
     {
         return $this->belongsTo(Restaurant::class);
+    }
+
+    /**
+     * Single writer for audit rows. The reply's parent context (request +
+     * restaurant) supplies `restaurant_id` and `send_mode`, so call sites
+     * don't have to pass them explicitly. `triggered_by_user_id` is null
+     * for system decisions (the generator pipeline) and populated for
+     * operator-driven actions (killswitch, manual cancel).
+     *
+     * Fields written here are intentionally narrow: ids, enum strings,
+     * and a reason code. Guest emails, reply bodies, and any other mail
+     * content are NOT recorded — the audit trail proves the decision was
+     * made, not the content involved.
+     */
+    public static function write(
+        ReservationReply $reply,
+        string $decision,
+        string $reason,
+        ?int $triggeredByUserId = null,
+    ): self {
+        $request = $reply->reservationRequest;
+        $restaurant = $request?->restaurant;
+
+        if ($request === null || $restaurant === null) {
+            throw new RuntimeException(
+                'AutoSendAudit::write requires a reply with a loadable request + restaurant.'
+            );
+        }
+
+        return self::create([
+            'reservation_reply_id' => $reply->id,
+            'restaurant_id' => $request->restaurant_id,
+            'send_mode' => $restaurant->send_mode->value,
+            'decision' => $decision,
+            'reason' => $reason,
+            'triggered_by_user_id' => $triggeredByUserId,
+            'created_at' => now(),
+        ]);
     }
 }
