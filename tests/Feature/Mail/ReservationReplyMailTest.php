@@ -28,13 +28,13 @@ class ReservationReplyMailTest extends TestCase
         ]);
     }
 
-    public function test_subject_references_the_restaurant_name(): void
+    public function test_subject_references_the_restaurant_name_and_carries_threading_marker(): void
     {
         $reply = $this->makeReply('Guten Tag, gerne!', restaurantName: 'Le Bistro');
 
         $mailable = new ReservationReplyMail($reply);
 
-        $mailable->assertHasSubject('Ihre Reservierungsanfrage bei Le Bistro');
+        $mailable->assertHasSubject('Reservierung bei Le Bistro [Res #'.$reply->reservation_request_id.']');
     }
 
     public function test_body_renders_only_the_operator_approved_text(): void
