@@ -73,11 +73,14 @@ final class SendReservationReplyJob implements ShouldQueue
         }
 
         try {
-            Mail::to($email)->send(new ReservationReplyMail($reply));
+            $mail = new ReservationReplyMail($reply);
+
+            Mail::to($email)->send($mail);
 
             $reply->forceFill([
                 'status' => ReservationReplyStatus::Sent,
                 'sent_at' => now(),
+                'outbound_message_id' => $mail->messageId,
                 'error_message' => null,
             ])->save();
 
