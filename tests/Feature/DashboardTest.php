@@ -6,6 +6,7 @@ namespace Tests\Feature;
 
 use App\Enums\ReservationSource;
 use App\Enums\ReservationStatus;
+use App\Models\ReservationMessage;
 use App\Models\ReservationRequest;
 use App\Models\Restaurant;
 use App\Models\User;
@@ -478,6 +479,58 @@ class DashboardTest extends TestCase
     // framework behaviour. The application-level guarantee is that
     // `selectedRequest` is wired as a closure, which Inertia evaluates
     // lazily — covered indirectly by the `?selected=` tests above.
+
+    public function test_thread_messages_prop_is_loaded_when_drawer_is_open(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $user = User::factory()->forRestaurant($restaurant)->create();
+        $reservation = ReservationRequest::factory()->forRestaurant($restaurant)->create();
+
+        $first = ReservationMessage::factory()
+            ->outbound()
+            ->forReservationRequest($reservation)
+            ->create([
+                'subject' => 'Reservierung [Res #'.$reservation->id.']',
+                'sent_at' => Carbon::now()->subHours(2),
+                'created_at' => Carbon::now()->subHours(2),
+            ]);
+        $second = ReservationMessage::factory()
+            ->inbound()
+            ->forReservationRequest($reservation)
+            ->create([
+                'subject' => 'Re: Reservierung [Res #'.$reservation->id.']',
+                'received_at' => Carbon::now()->subHour(),
+                'created_at' => Carbon::now()->subHour(),
+            ]);
+
+        $this->actingAs($user)
+            ->get('/dashboard?selected='.$reservation->id)
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Dashboard')
+                ->has('threadMessages', 2)
+                ->where('threadMessages.0.id', $first->id)
+                ->where('threadMessages.0.direction', 'out')
+                ->where('threadMessages.1.id', $second->id)
+                ->where('threadMessages.1.direction', 'in')
+                ->etc()
+            );
+    }
+
+    public function test_thread_messages_prop_is_null_when_drawer_is_closed(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $user = User::factory()->forRestaurant($restaurant)->create();
+
+        $this->actingAs($user)
+            ->get('/dashboard')
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Dashboard')
+                ->where('threadMessages', null)
+                ->etc()
+            );
+    }
 
     public function test_invalid_selected_param_is_rejected_by_validation(): void
     {

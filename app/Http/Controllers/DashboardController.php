@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Enums\ReservationStatus;
 use App\Enums\UserRole;
 use App\Http\Requests\DashboardFilterRequest;
+use App\Http\Resources\ReservationMessageResource;
 use App\Http\Resources\ReservationRequestDetailResource;
 use App\Http\Resources\ReservationRequestResource;
 use App\Models\ReservationRequest;
@@ -48,6 +49,7 @@ final class DashboardController extends Controller
                     ->count(),
             ],
             'selectedRequest' => fn () => $this->resolveSelected($selectedId, $request),
+            'threadMessages' => fn () => $this->resolveThreadMessages($selectedId, $request),
             // Owner-only banner. The flag is global (V1.0 has one OpenAI key
             // app-wide); dismissing-by-user is intentionally NOT supported
             // (issue #76) so a stale alert can't outlive a still-broken key.
@@ -73,6 +75,37 @@ final class DashboardController extends Controller
         }
 
         return (new ReservationRequestDetailResource($reservation))->toArray($request);
+    }
+
+    /**
+     * Lazy prop for the drawer's History tab. The frontend triggers a
+     * partial reload (`router.reload({ only: ['threadMessages'] })`) on
+     * tab activation, so this only runs when the operator opens History
+     * on the currently-selected reservation.
+     *
+     * @return array<int, array<string, mixed>>|null
+     */
+    private function resolveThreadMessages(?int $id, DashboardFilterRequest $request): ?array
+    {
+        if ($id === null) {
+            return null;
+        }
+
+        $reservation = ReservationRequest::query()
+            ->withoutGlobalScopes()
+            ->find($id);
+
+        if ($reservation === null || ! Gate::forUser($request->user())->allows('view', $reservation)) {
+            return null;
+        }
+
+        $messages = $reservation->messages()
+            ->with(['outboundReply.approver:id,name'])
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get();
+
+        return ReservationMessageResource::collection($messages)->resolve($request);
     }
 
     /**
