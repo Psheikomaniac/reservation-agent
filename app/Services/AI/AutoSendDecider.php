@@ -20,9 +20,9 @@ use RuntimeException;
  * trips, the decider falls back to manual regardless of the restaurant's
  * configured mode, so the operator's safety net is never bypassed.
  *
- * Not declared `final` is the project default; this one IS final because
- * tests of the cascade can — and should — drive it through real factory
- * data rather than overriding internals (no test-only subclass needed).
+ * `final` per the project default for services. The cascade is tested
+ * end-to-end through real factory data (the gates in #215 will follow
+ * the same pattern), so no test-only subclass seam is needed.
  */
 final class AutoSendDecider
 {
