@@ -4,17 +4,23 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Services\Email;
 
+use App\Models\ReservationMessage;
 use App\Models\ReservationRequest;
+use App\Models\Restaurant;
 use App\Services\Email\ThreadResolver;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
 use Mockery\MockInterface;
 use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 use Tests\TestCase;
 use Webklex\PHPIMAP\Address;
 use Webklex\PHPIMAP\Message;
 
 class ThreadResolverTest extends TestCase
 {
+    use RefreshDatabase;
+
     protected function tearDown(): void
     {
         Mockery::close();
@@ -104,20 +110,116 @@ class ThreadResolverTest extends TestCase
         };
     }
 
-    /**
-     * Builds a Mockery double of Webklex Message with a single From address
-     * and a Message-ID. The Address class has a public `mail` property, so
-     * a stdClass-equivalent stub via Mockery is enough — the resolver only
-     * reads `getFrom()[0]->mail` and `getMessageId()`.
-     */
-    private function makeMessage(string $fromMail, string $messageId = '<test@example.com>'): Message&MockInterface
+    public function test_it_resolves_by_in_reply_to_header(): void
     {
+        [$request, $outboundId] = $this->seedOutboundThread('guest@example.com');
+
+        $resolver = new ThreadResolver(new NullLogger);
+
+        $resolved = $resolver->resolveForIncoming(
+            $this->makeMessage('guest@example.com', inReplyTo: $outboundId),
+            $request->restaurant_id,
+        );
+
+        $this->assertNotNull($resolved);
+        $this->assertSame($request->id, $resolved->id);
+    }
+
+    public function test_it_resolves_by_references_chain_when_in_reply_to_is_unknown(): void
+    {
+        [$request, $outboundId] = $this->seedOutboundThread('guest@example.com');
+
+        $resolver = new ThreadResolver(new NullLogger);
+
+        $resolved = $resolver->resolveForIncoming(
+            $this->makeMessage(
+                'guest@example.com',
+                inReplyTo: '<unknown@x>',
+                references: '<root@x> '.$outboundId.' <other@x>',
+            ),
+            $request->restaurant_id,
+        );
+
+        $this->assertNotNull($resolved);
+        $this->assertSame($request->id, $resolved->id);
+    }
+
+    public function test_it_does_not_match_across_restaurants(): void
+    {
+        [$request, $outboundId] = $this->seedOutboundThread('guest@example.com');
+
+        $otherRestaurant = Restaurant::factory()->create();
+
+        $resolver = new ThreadResolver(new NullLogger);
+
+        $resolved = $resolver->resolveForIncoming(
+            $this->makeMessage('guest@example.com', inReplyTo: $outboundId),
+            $otherRestaurant->id,
+        );
+
+        $this->assertNull(
+            $resolved,
+            'An outbound message belonging to restaurant A must not resolve when the inbound mail targets restaurant B.',
+        );
+        $this->assertNotSame($request->restaurant_id, $otherRestaurant->id);
+    }
+
+    public function test_it_rejects_spoofed_in_reply_to_when_sender_does_not_match(): void
+    {
+        [$request, $outboundId] = $this->seedOutboundThread('guest@example.com');
+
+        $logger = Mockery::mock(LoggerInterface::class);
+        $logger->shouldReceive('warning')->once();
+
+        $resolver = new ThreadResolver($logger);
+
+        $resolved = $resolver->resolveForIncoming(
+            $this->makeMessage('attacker@example.com', inReplyTo: $outboundId),
+            $request->restaurant_id,
+        );
+
+        $this->assertNull($resolved, 'A spoofed In-Reply-To must not yield a thread match when the sender differs.');
+    }
+
+    /**
+     * @return array{0: ReservationRequest, 1: string} the request and the outbound message-id
+     */
+    private function seedOutboundThread(string $guestEmail): array
+    {
+        $restaurant = Restaurant::factory()->create();
+        $request = ReservationRequest::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'guest_email' => $guestEmail,
+        ]);
+
+        $outbound = ReservationMessage::factory()
+            ->outbound()
+            ->forReservationRequest($request)
+            ->create();
+
+        return [$request, $outbound->message_id];
+    }
+
+    /**
+     * Builds a Mockery double of Webklex Message with a single From address,
+     * Message-ID, In-Reply-To and References headers. Defaults keep the older
+     * tests stable: when In-Reply-To/References are empty strings the new
+     * strategies short-circuit just like before.
+     */
+    private function makeMessage(
+        string $fromMail,
+        string $messageId = '<test@example.com>',
+        string $inReplyTo = '',
+        string $references = '',
+    ): Message&MockInterface {
         $address = Mockery::mock(Address::class);
         $address->mail = $fromMail;
 
         $message = Mockery::mock(Message::class);
         $message->shouldReceive('getFrom')->andReturn([$address]);
         $message->shouldReceive('getMessageId')->andReturn($messageId);
+        $message->shouldReceive('getInReplyTo')->andReturn($inReplyTo);
+        $message->shouldReceive('getReferences')->andReturn($references);
 
         return $message;
     }
