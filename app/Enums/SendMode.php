@@ -24,9 +24,9 @@ enum SendMode: string
     public function label(): string
     {
         return match ($this) {
-            self::Manual => 'Manuell',
-            self::Shadow => 'Schatten',
-            self::Auto => 'Automatisch',
+            self::Manual => 'Manuelle Freigabe',
+            self::Shadow => 'Shadow-Modus (Test)',
+            self::Auto => 'Automatischer Versand',
         };
     }
 }

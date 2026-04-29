@@ -15,9 +15,9 @@ class SendModeTest extends TestCase
 
     public function test_each_case_carries_a_german_label(): void
     {
-        $this->assertSame('Manuell', SendMode::Manual->label());
-        $this->assertSame('Schatten', SendMode::Shadow->label());
-        $this->assertSame('Automatisch', SendMode::Auto->label());
+        $this->assertSame('Manuelle Freigabe', SendMode::Manual->label());
+        $this->assertSame('Shadow-Modus (Test)', SendMode::Shadow->label());
+        $this->assertSame('Automatischer Versand', SendMode::Auto->label());
     }
 
     public function test_restaurant_model_casts_send_mode_to_the_enum(): void
