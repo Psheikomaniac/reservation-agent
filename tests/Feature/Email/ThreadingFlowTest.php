@@ -251,6 +251,83 @@ class ThreadingFlowTest extends TestCase
         });
     }
 
+    public function test_it_builds_references_chain_on_second_outbound_mail(): void
+    {
+        $reply = $this->makeApprovedReply();
+
+        $previousId = '<reservation-99-aaaaaaaaaaaaaaaa@restaurant.example>';
+        ReservationMessage::factory()
+            ->outbound()
+            ->forReservationRequest($reply->reservationRequest)
+            ->create([
+                'message_id' => $previousId,
+                'sent_at' => now()->subHour(),
+            ]);
+
+        $mail = new ReservationReplyMail($reply->fresh());
+        $headers = $mail->headers();
+
+        $this->assertSame([$previousId], $headers->references);
+        $this->assertSame('<'.$previousId.'>', $headers->text['In-Reply-To'] ?? null);
+    }
+
+    public function test_first_outbound_mail_carries_no_references_or_in_reply_to(): void
+    {
+        $reply = $this->makeApprovedReply();
+
+        $mail = new ReservationReplyMail($reply);
+        $headers = $mail->headers();
+
+        $this->assertSame([], $headers->references);
+        $this->assertArrayNotHasKey('In-Reply-To', $headers->text);
+    }
+
+    public function test_it_persists_outbound_reservation_message_after_send(): void
+    {
+        Mail::fake();
+
+        $reply = $this->makeApprovedReply(guestEmail: 'guest@example.com');
+
+        Bus::dispatchSync(new SendReservationReplyJob($reply->id));
+
+        $outbound = ReservationMessage::query()
+            ->where('reservation_request_id', $reply->reservation_request_id)
+            ->where('direction', MessageDirection::Out)
+            ->first();
+
+        $this->assertNotNull($outbound, 'A successful send must persist an outbound ReservationMessage row.');
+        $this->assertSame($reply->fresh()->outbound_message_id, $outbound->message_id);
+        $this->assertSame('guest@example.com', $outbound->to_address);
+        $this->assertSame($reply->body, $outbound->body_plain);
+        $this->assertNotNull($outbound->sent_at);
+    }
+
+    public function test_it_trims_references_to_last_ten_message_ids(): void
+    {
+        $reply = $this->makeApprovedReply();
+        $request = $reply->reservationRequest;
+
+        $allIds = [];
+        for ($i = 1; $i <= 15; $i++) {
+            $id = sprintf('<reservation-%d-%s@restaurant.example>', $i, str_repeat('0', 15).$i);
+            $allIds[] = $id;
+            ReservationMessage::factory()
+                ->outbound()
+                ->forReservationRequest($request)
+                ->create([
+                    'message_id' => $id,
+                    'sent_at' => now()->subHours(15 - $i + 1),
+                ]);
+        }
+
+        $mail = new ReservationReplyMail($reply->fresh());
+        $headers = $mail->headers();
+
+        $this->assertCount(10, $headers->references);
+        $this->assertSame(array_slice($allIds, 5), $headers->references, 'Should keep the most recent 10 ids in chronological order.');
+        $this->assertSame('<'.end($allIds).'>', $headers->text['In-Reply-To']);
+    }
+
     private function makeApprovedReply(string $restaurantName = 'La Trattoria', string $guestEmail = 'guest@example.com'): ReservationReply
     {
         $restaurant = Restaurant::factory()->create(['name' => $restaurantName]);

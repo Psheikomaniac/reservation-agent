@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Mail;
 
+use App\Enums\MessageDirection;
+use App\Models\ReservationMessage;
 use App\Models\ReservationReply;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
@@ -49,9 +51,41 @@ final class ReservationReplyMail extends Mailable
 
     public function headers(): Headers
     {
+        $previousIds = $this->previousMessageIds();
+
+        // In-Reply-To takes the most recent predecessor; the project-wide
+        // convention for Message-IDs in `text:` headers is to wrap them in
+        // angle brackets explicitly (the `references:` slot wraps for us).
+        $text = $previousIds === []
+            ? []
+            : ['In-Reply-To' => '<'.end($previousIds).'>'];
+
         return new Headers(
             messageId: $this->messageId,
+            references: $previousIds,
+            text: $text,
         );
+    }
+
+    /**
+     * Up to the most recent ten outbound Message-IDs for this reservation,
+     * in chronological order. The current send is excluded — it has not
+     * been persisted yet — so this returns the predecessor chain only.
+     *
+     * @return list<string>
+     */
+    private function previousMessageIds(): array
+    {
+        return ReservationMessage::query()
+            ->where('reservation_request_id', $this->reply->reservation_request_id)
+            ->where('direction', MessageDirection::Out)
+            ->whereNotNull('message_id')
+            ->orderBy('sent_at')
+            ->orderBy('id')
+            ->pluck('message_id')
+            ->slice(-10)
+            ->values()
+            ->all();
     }
 
     public function content(): Content
