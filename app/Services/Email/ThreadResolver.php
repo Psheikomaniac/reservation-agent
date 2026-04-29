@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Email;
 
+use App\Enums\MessageDirection;
+use App\Models\ReservationMessage;
 use App\Models\ReservationRequest;
 use Psr\Log\LoggerInterface;
 use Webklex\PHPIMAP\Message;
@@ -13,7 +15,8 @@ use Webklex\PHPIMAP\Message;
  * four-strategy cascade. Every positive resolution is re-verified via
  * verifySender, so a spoofed In-Reply-To cannot hijack a foreign thread.
  *
- * Strategy bodies are introduced in dedicated issues (#203, #204).
+ * Strategy bodies arrive incrementally: byInReplyTo + byReferences (#203),
+ * bySubjectMarker + byHeuristic (#204).
  *
  * Not declared `final` (against the project default) so the cascade
  * contract can be exercised by a test-only subclass that swaps a single
@@ -54,12 +57,44 @@ class ThreadResolver
 
     protected function byInReplyTo(Message $message, int $restaurantId): ?ReservationRequest
     {
-        return null;
+        return $this->lookupOutboundMessage(trim((string) $message->getInReplyTo()), $restaurantId);
     }
 
     protected function byReferences(Message $message, int $restaurantId): ?ReservationRequest
     {
+        $references = trim((string) $message->getReferences());
+        if ($references === '') {
+            return null;
+        }
+
+        foreach (preg_split('/\s+/', $references) ?: [] as $candidate) {
+            $candidate = trim($candidate);
+            if ($candidate === '') {
+                continue;
+            }
+
+            if ($match = $this->lookupOutboundMessage($candidate, $restaurantId)) {
+                return $match;
+            }
+        }
+
         return null;
+    }
+
+    private function lookupOutboundMessage(string $messageId, int $restaurantId): ?ReservationRequest
+    {
+        if ($messageId === '') {
+            return null;
+        }
+
+        $hit = ReservationMessage::query()
+            ->where('direction', MessageDirection::Out)
+            ->where('message_id', $messageId)
+            ->whereHas('reservationRequest', fn ($query) => $query->where('restaurant_id', $restaurantId))
+            ->with('reservationRequest')
+            ->first();
+
+        return $hit?->reservationRequest;
     }
 
     protected function bySubjectMarker(Message $message, int $restaurantId): ?ReservationRequest
