@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PublicReservationController;
+use App\Http\Controllers\ReservationMessagesController;
 use App\Http\Controllers\ReservationReplyController;
 use App\Http\Controllers\ReservationRequestController;
 use Illuminate\Support\Facades\Route;
@@ -19,6 +20,11 @@ Route::get('reservations/{reservation}', [ReservationRequestController::class, '
     ->whereNumber('reservation')
     ->middleware(['auth', 'verified'])
     ->name('reservations.show');
+
+Route::get('reservations/{reservation}/messages', [ReservationMessagesController::class, 'index'])
+    ->whereNumber('reservation')
+    ->middleware(['auth', 'verified'])
+    ->name('reservations.messages.index');
 
 Route::post('reservations/bulk-status', [ReservationRequestController::class, 'bulkStatus'])
     ->middleware(['auth', 'verified'])
