@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Mail;
 use Tests\Support\Email\FakeImapMailboxFactory;
 use Tests\TestCase;
+use Webklex\PHPIMAP\Message;
 
 class ThreadingFlowTest extends TestCase
 {
@@ -417,5 +418,75 @@ class ThreadingFlowTest extends TestCase
         $response->assertOk();
         $response->assertJsonMissingPath('data.0.raw_headers');
         $this->assertStringNotContainsString($secret, $response->getContent() ?: '');
+    }
+
+    public function test_fetch_job_threads_an_inbound_eml_fixture_via_in_reply_to_header_end_to_end(): void
+    {
+        // Reuses the .eml fixture from #210. The flow under test:
+        //   .eml → Webklex Message → FetchedEmail (via the same conversion
+        //   the production WebklexImapMailbox does) → fed through the fake
+        //   mailbox factory → FetchReservationEmailsJob → ThreadResolver →
+        //   ReservationMessage row appended on the existing reservation,
+        //   no new ReservationRequest created.
+        $restaurant = Restaurant::factory()->create([
+            'imap_host' => 'mail.example.com',
+            'imap_username' => 'mailbox@example.com',
+            'imap_password' => 'secret',
+        ]);
+        $request = ReservationRequest::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'guest_email' => 'anna.mueller@example.com',
+        ]);
+        ReservationMessage::factory()
+            ->outbound()
+            ->forReservationRequest($request)
+            ->create([
+                'message_id' => 'outbound-thread-id-001@restaurant.example',
+                'sent_at' => now()->subHour(),
+            ]);
+
+        $email = $this->loadFixtureAsEmail(__DIR__.'/../../Fixtures/emails/threading/reply-with-in-reply-to.eml');
+
+        $this->runJobWith($restaurant->id, [$email]);
+
+        $this->assertSame(
+            1,
+            ReservationRequest::query()->where('restaurant_id', $restaurant->id)->count(),
+            'Fixture-driven inbound reply must thread, not create a new reservation.',
+        );
+        $this->assertSame(
+            1,
+            ReservationMessage::query()
+                ->where('reservation_request_id', $request->id)
+                ->where('direction', MessageDirection::In)
+                ->count(),
+            'Fixture-driven reply must be appended as an inbound ReservationMessage.',
+        );
+        $this->assertDatabaseHas('reservation_messages', [
+            'reservation_request_id' => $request->id,
+            'direction' => MessageDirection::In->value,
+            'message_id' => 'inbound-reply-irt-001@example.com',
+        ]);
+    }
+
+    private function loadFixtureAsEmail(string $path): FetchedEmail
+    {
+        $this->assertFileExists($path, "Missing fixture: {$path}");
+
+        $message = Message::fromFile($path);
+        $from = $message->getFrom()[0] ?? null;
+
+        return new FetchedEmail(
+            messageId: trim((string) $message->getMessageId()),
+            body: trim($message->hasTextBody() ? $message->getTextBody() : ''),
+            senderEmail: $from?->mail ?? '',
+            senderName: $from?->personal !== '' ? ($from?->personal ?? null) : null,
+            rawHeaders: (string) $message->getHeader()->raw,
+            rawBody: trim($message->hasTextBody() ? $message->getTextBody() : ''),
+            inReplyTo: trim((string) $message->getInReplyTo()),
+            references: trim((string) $message->getReferences()),
+            subject: trim((string) $message->getSubject()),
+            toAddress: 'mailbox@example.com',
+        );
     }
 }
