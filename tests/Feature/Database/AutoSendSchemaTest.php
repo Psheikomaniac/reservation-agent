@@ -21,7 +21,7 @@ class AutoSendSchemaTest extends TestCase
     {
         $restaurant = Restaurant::factory()->create()->refresh();
 
-        $this->assertSame('manual', $restaurant->send_mode);
+        $this->assertSame('manual', $restaurant->getRawOriginal('send_mode'));
         $this->assertSame(10, (int) $restaurant->auto_send_party_size_max);
         $this->assertSame(90, (int) $restaurant->auto_send_min_lead_time_minutes);
         $this->assertNull($restaurant->send_mode_changed_at);

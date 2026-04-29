@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ReservationStatus;
+use App\Enums\SendMode;
 use App\Enums\Tonality;
 use App\Support\OpeningHours;
 use Carbon\CarbonInterface;
@@ -37,6 +38,11 @@ class Restaurant extends Model
         'imap_host',
         'imap_username',
         'imap_password',
+        'send_mode',
+        'auto_send_party_size_max',
+        'auto_send_min_lead_time_minutes',
+        'send_mode_changed_at',
+        'send_mode_changed_by',
     ];
 
     /**
@@ -60,6 +66,10 @@ class Restaurant extends Model
             'opening_hours' => 'array',
             'tonality' => Tonality::class,
             'imap_password' => 'encrypted',
+            'send_mode' => SendMode::class,
+            'auto_send_party_size_max' => 'integer',
+            'auto_send_min_lead_time_minutes' => 'integer',
+            'send_mode_changed_at' => 'datetime',
         ];
     }
 
