@@ -8,8 +8,11 @@ use App\Enums\ReservationReplyStatus;
 use App\Events\OpenAiAuthenticationFailed;
 use App\Exceptions\AI\OpenAiAuthenticationException;
 use App\Exceptions\AI\OpenAiRateLimitException;
+use App\Models\AutoSendAudit;
 use App\Models\ReservationReply;
 use App\Models\ReservationRequest;
+use App\Services\AI\AutoSendDecider;
+use App\Services\AI\AutoSendDecision;
 use App\Services\AI\Contracts\ReplyGenerator;
 use App\Services\AI\OpenAiReplyGenerator;
 use App\Services\AI\ReservationContextBuilder;
@@ -49,6 +52,12 @@ class GenerateReservationReplyJob implements ShouldQueue
     /** Delay before re-attempting after a 429 (PRD-005). */
     public const int RATE_LIMIT_RETRY_DELAY_SECONDS = 60;
 
+    /**
+     * Length of the cancel-window before an auto-send actually goes out
+     * (PRD-007). Architectural constant — not UI-configurable.
+     */
+    public const int AUTO_SEND_CANCEL_WINDOW_SECONDS = 60;
+
     public function __construct(public int $reservationRequestId) {}
 
     public function handle(): void
@@ -69,12 +78,14 @@ class GenerateReservationReplyJob implements ShouldQueue
             $context = $builder->build($request);
             $body = $generator->generate($context);
 
-            ReservationReply::create([
+            $reply = ReservationReply::create([
                 'reservation_request_id' => $request->id,
                 'status' => ReservationReplyStatus::Draft,
                 'body' => $body,
                 'ai_prompt_snapshot' => $context,
             ]);
+
+            $this->applyAutoSendDecision($reply);
         } catch (OpenAiRateLimitException $e) {
             // First 429 → release back to queue with the configured delay.
             // Second 429 falls through to the generic-fallback path.
@@ -119,12 +130,77 @@ class GenerateReservationReplyJob implements ShouldQueue
 
         $request->forceFill(['needs_manual_review' => true])->save();
 
-        ReservationReply::create([
+        $reply = ReservationReply::create([
             'reservation_request_id' => $request->id,
             'status' => ReservationReplyStatus::Draft,
             'body' => OpenAiReplyGenerator::FALLBACK_TEXT,
             'ai_prompt_snapshot' => $context,
             'is_fallback' => true,
         ]);
+
+        $this->applyAutoSendDecision($reply);
+    }
+
+    /**
+     * Run the AutoSendDecider on a freshly-created draft reply, persist
+     * the snapshot fields, write an audit row, and route the reply into
+     * the manual / shadow / scheduled-auto-send branch dictated by the
+     * decision (PRD-007 § Trigger-Kette).
+     *
+     * The decider is the single authoritative source — even on the
+     * fallback path, where hard gates are guaranteed to block, we still
+     * call through here so the audit trail records *why* manual is
+     * forced (e.g. `fallback_text`, `needs_manual_review`).
+     */
+    private function applyAutoSendDecision(ReservationReply $reply): void
+    {
+        $reply->refresh();
+
+        $request = $reply->reservationRequest;
+        $restaurant = $request?->restaurant;
+
+        if ($restaurant === null) {
+            // Unreachable in production (the reply was just created on
+            // top of a hydrated request) but the decider has its own
+            // missing-context fallback, so we let it record that.
+            return;
+        }
+
+        $decider = app(AutoSendDecider::class);
+        $decision = $decider->decide($reply);
+
+        $reply->forceFill([
+            'send_mode_at_creation' => $restaurant->send_mode,
+            'auto_send_decision' => $decision->toArray(),
+        ])->save();
+
+        AutoSendAudit::write($reply, $decision->decision, $decision->reason);
+
+        match ($decision->decision) {
+            AutoSendDecision::DECISION_MANUAL => null, // V1.0 path: status stays Draft.
+            AutoSendDecision::DECISION_SHADOW => $reply->forceFill([
+                'status' => ReservationReplyStatus::Shadow,
+            ])->save(),
+            AutoSendDecision::DECISION_AUTO_SEND => $this->scheduleAutoSend($reply),
+        };
+    }
+
+    /**
+     * Promote the reply into `scheduled_auto_send` and dispatch the
+     * cancel-window job. The 60-second delay is set here — the canonical
+     * source of the cancel-window length — and the scheduled job carries
+     * no copy of the constant.
+     */
+    private function scheduleAutoSend(ReservationReply $reply): void
+    {
+        $scheduledFor = now()->addSeconds(self::AUTO_SEND_CANCEL_WINDOW_SECONDS);
+
+        $reply->forceFill([
+            'status' => ReservationReplyStatus::ScheduledAutoSend,
+            'auto_send_scheduled_for' => $scheduledFor,
+        ])->save();
+
+        ScheduledAutoSendJob::dispatch($reply->id)
+            ->delay(self::AUTO_SEND_CANCEL_WINDOW_SECONDS);
     }
 }

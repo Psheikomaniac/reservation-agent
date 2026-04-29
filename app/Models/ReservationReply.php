@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ReservationReplyStatus;
+use App\Enums\SendMode;
 use App\Models\Scopes\RestaurantScope;
 use Database\Factories\ReservationReplyFactory;
 use Illuminate\Database\Eloquent\Attributes\ScopedBy;
@@ -32,6 +33,9 @@ class ReservationReply extends Model
         'error_message',
         'outbound_message_id',
         'is_fallback',
+        'send_mode_at_creation',
+        'auto_send_decision',
+        'auto_send_scheduled_for',
     ];
 
     /**
@@ -47,6 +51,9 @@ class ReservationReply extends Model
             'approved_at' => 'datetime',
             'sent_at' => 'datetime',
             'is_fallback' => 'boolean',
+            'send_mode_at_creation' => SendMode::class,
+            'auto_send_decision' => 'array',
+            'auto_send_scheduled_for' => 'datetime',
         ];
     }
 
