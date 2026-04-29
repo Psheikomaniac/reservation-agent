@@ -7,6 +7,7 @@ use Database\Factories\ReservationMessageFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 final class ReservationMessage extends Model
 {
@@ -53,5 +54,17 @@ final class ReservationMessage extends Model
     public function reservationRequest(): BelongsTo
     {
         return $this->belongsTo(ReservationRequest::class);
+    }
+
+    /**
+     * Loose join: an outbound message's `message_id` matches the
+     * `outbound_message_id` persisted on the originating ReservationReply.
+     * Used to surface the operator who approved the send in the drawer.
+     *
+     * @return HasOne<ReservationReply, $this>
+     */
+    public function outboundReply(): HasOne
+    {
+        return $this->hasOne(ReservationReply::class, 'outbound_message_id', 'message_id');
     }
 }

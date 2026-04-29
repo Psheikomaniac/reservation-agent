@@ -9,6 +9,12 @@ declare module 'ziggy-js' {
             "required": true
         }
     ],
+    "reservations.messages.index": [
+        {
+            "name": "reservation",
+            "required": true
+        }
+    ],
     "reservations.bulk-status": [],
     "reservation-replies.approve": [
         {

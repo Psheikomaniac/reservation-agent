@@ -13,6 +13,7 @@ use App\Models\ReservationMessage;
 use App\Models\ReservationReply;
 use App\Models\ReservationRequest;
 use App\Models\Restaurant;
+use App\Models\User;
 use App\Services\Email\Contracts\ImapMailboxFactory;
 use App\Services\Email\DTO\FetchedEmail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -340,5 +341,81 @@ class ThreadingFlowTest extends TestCase
             'reservation_request_id' => $request->id,
             'status' => ReservationReplyStatus::Approved,
         ]);
+    }
+
+    public function test_it_lists_thread_messages_in_detail_drawer_chronologically(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $request = ReservationRequest::factory()->create(['restaurant_id' => $restaurant->id]);
+        $user = User::factory()->create(['restaurant_id' => $restaurant->id, 'name' => 'Operator Anna']);
+
+        $first = ReservationMessage::factory()->outbound()->forReservationRequest($request)->create([
+            'subject' => 'Reservierung bei XYZ [Res #'.$request->id.']',
+            'sent_at' => now()->subHours(3),
+            'created_at' => now()->subHours(3),
+        ]);
+        ReservationReply::factory()->create([
+            'reservation_request_id' => $request->id,
+            'status' => ReservationReplyStatus::Sent,
+            'outbound_message_id' => $first->message_id,
+            'approved_by' => $user->id,
+        ]);
+        $second = ReservationMessage::factory()->inbound()->forReservationRequest($request)->create([
+            'subject' => 'Re: Reservierung bei XYZ [Res #'.$request->id.']',
+            'received_at' => now()->subHour(),
+            'created_at' => now()->subHour(),
+        ]);
+
+        $response = $this->actingAs($user)
+            ->getJson(route('reservations.messages.index', $request));
+
+        $response->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonPath('data.0.id', $first->id)
+            ->assertJsonPath('data.0.direction', 'out')
+            ->assertJsonPath('data.0.approved_by', 'Operator Anna')
+            ->assertJsonPath('data.1.id', $second->id)
+            ->assertJsonPath('data.1.direction', 'in')
+            ->assertJsonPath('data.1.approved_by', null);
+    }
+
+    public function test_it_forbids_cross_tenant_access_to_messages_endpoint(): void
+    {
+        $restaurantA = Restaurant::factory()->create();
+        $restaurantB = Restaurant::factory()->create();
+        $requestOnA = ReservationRequest::factory()->create(['restaurant_id' => $restaurantA->id]);
+        $userOfB = User::factory()->create(['restaurant_id' => $restaurantB->id]);
+
+        $this->actingAs($userOfB)
+            ->getJson(route('reservations.messages.index', $requestOnA))
+            ->assertForbidden();
+    }
+
+    public function test_it_returns_404_for_unknown_reservation(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->getJson(route('reservations.messages.index', 999_999))
+            ->assertNotFound();
+    }
+
+    public function test_it_does_not_expose_raw_headers_in_resource(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $request = ReservationRequest::factory()->create(['restaurant_id' => $restaurant->id]);
+        $user = User::factory()->create(['restaurant_id' => $restaurant->id]);
+
+        $secret = 'X-Internal-Token: super-secret-do-not-leak';
+        ReservationMessage::factory()->inbound()->forReservationRequest($request)->create([
+            'raw_headers' => $secret,
+        ]);
+
+        $response = $this->actingAs($user)
+            ->getJson(route('reservations.messages.index', $request));
+
+        $response->assertOk();
+        $response->assertJsonMissingPath('data.0.raw_headers');
+        $this->assertStringNotContainsString($secret, $response->getContent() ?: '');
     }
 }
