@@ -200,17 +200,150 @@ class ThreadResolverTest extends TestCase
         return [$request, $outbound->message_id];
     }
 
+    public function test_it_resolves_by_subject_marker(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $request = ReservationRequest::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'guest_email' => 'guest@example.com',
+        ]);
+
+        $resolver = new ThreadResolver(new NullLogger);
+
+        $resolved = $resolver->resolveForIncoming(
+            $this->makeMessage('guest@example.com', subject: 'Re: [Res #'.$request->id.'] Reservierung'),
+            $restaurant->id,
+        );
+
+        $this->assertNotNull($resolved);
+        $this->assertSame($request->id, $resolved->id);
+    }
+
+    public function test_subject_marker_is_scoped_to_restaurant(): void
+    {
+        $request = ReservationRequest::factory()->create(['guest_email' => 'guest@example.com']);
+        $otherRestaurant = Restaurant::factory()->create();
+
+        $resolver = new ThreadResolver(new NullLogger);
+
+        $resolved = $resolver->resolveForIncoming(
+            $this->makeMessage('guest@example.com', subject: '[Res #'.$request->id.']'),
+            $otherRestaurant->id,
+        );
+
+        $this->assertNull($resolved, 'A subject marker pointing at restaurant A must not resolve when targeting B.');
+    }
+
+    public function test_it_resolves_by_heuristic_when_within_30_days(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $request = ReservationRequest::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'guest_email' => 'guest@example.com',
+        ]);
+        ReservationMessage::factory()->outbound()->forReservationRequest($request)->create([
+            'subject' => 'Reservierung am 12.05.',
+            'sent_at' => now()->subDays(5),
+        ]);
+
+        $resolver = new ThreadResolver(new NullLogger);
+
+        $resolved = $resolver->resolveForIncoming(
+            $this->makeMessage('guest@example.com', subject: 'Re: Reservierung am 12.05.'),
+            $restaurant->id,
+        );
+
+        $this->assertNotNull($resolved);
+        $this->assertSame($request->id, $resolved->id);
+    }
+
+    public function test_it_does_not_resolve_by_heuristic_when_older_than_30_days(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $request = ReservationRequest::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'guest_email' => 'guest@example.com',
+        ]);
+        ReservationMessage::factory()->outbound()->forReservationRequest($request)->create([
+            'subject' => 'Reservierung am 01.01.',
+            'sent_at' => now()->subDays(40),
+        ]);
+
+        $resolver = new ThreadResolver(new NullLogger);
+
+        $resolved = $resolver->resolveForIncoming(
+            $this->makeMessage('guest@example.com', subject: 'Re: Reservierung am 01.01.'),
+            $restaurant->id,
+        );
+
+        $this->assertNull($resolved, 'Heuristic must not match outbound messages older than the 30-day window.');
+    }
+
+    public function test_heuristic_normalizes_various_reply_prefixes(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $request = ReservationRequest::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'guest_email' => 'guest@example.com',
+        ]);
+        ReservationMessage::factory()->outbound()->forReservationRequest($request)->create([
+            'subject' => 'Tisch fuer 4 Personen',
+            'sent_at' => now()->subDays(2),
+        ]);
+
+        $resolver = new ThreadResolver(new NullLogger);
+
+        foreach (['Re:', 'RE:', 'AW:', 'Antw:', 'Re[2]:'] as $prefix) {
+            $resolved = $resolver->resolveForIncoming(
+                $this->makeMessage('guest@example.com', subject: $prefix.' Tisch fuer 4 Personen'),
+                $restaurant->id,
+            );
+
+            $this->assertNotNull($resolved, "Prefix '{$prefix}' should normalize for the heuristic.");
+            $this->assertSame($request->id, $resolved->id);
+        }
+    }
+
+    public function test_heuristic_requires_sender_to_match_guest_email(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $request = ReservationRequest::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'guest_email' => 'guest@example.com',
+        ]);
+        ReservationMessage::factory()->outbound()->forReservationRequest($request)->create([
+            'subject' => 'Reservierung Mai',
+            'sent_at' => now()->subDays(3),
+        ]);
+
+        $logger = Mockery::mock(LoggerInterface::class);
+        $logger->shouldNotReceive('warning');
+
+        $resolver = new ThreadResolver($logger);
+
+        $resolved = $resolver->resolveForIncoming(
+            $this->makeMessage('attacker@example.com', subject: 'Re: Reservierung Mai'),
+            $restaurant->id,
+        );
+
+        $this->assertNull(
+            $resolved,
+            'Heuristic must filter by sender BEFORE verifySender — no warning should be logged.',
+        );
+    }
+
     /**
      * Builds a Mockery double of Webklex Message with a single From address,
-     * Message-ID, In-Reply-To and References headers. Defaults keep the older
-     * tests stable: when In-Reply-To/References are empty strings the new
-     * strategies short-circuit just like before.
+     * Message-ID, In-Reply-To, References, and Subject. Defaults keep the
+     * older tests stable: when In-Reply-To/References/Subject are empty
+     * strings the strategies short-circuit just like before.
      */
     private function makeMessage(
         string $fromMail,
         string $messageId = '<test@example.com>',
         string $inReplyTo = '',
         string $references = '',
+        string $subject = '',
     ): Message&MockInterface {
         $address = Mockery::mock(Address::class);
         $address->mail = $fromMail;
@@ -220,6 +353,7 @@ class ThreadResolverTest extends TestCase
         $message->shouldReceive('getMessageId')->andReturn($messageId);
         $message->shouldReceive('getInReplyTo')->andReturn($inReplyTo);
         $message->shouldReceive('getReferences')->andReturn($references);
+        $message->shouldReceive('getSubject')->andReturn($subject);
 
         return $message;
     }

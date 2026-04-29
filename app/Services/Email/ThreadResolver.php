@@ -15,8 +15,10 @@ use Webklex\PHPIMAP\Message;
  * four-strategy cascade. Every positive resolution is re-verified via
  * verifySender, so a spoofed In-Reply-To cannot hijack a foreign thread.
  *
- * Strategy bodies arrive incrementally: byInReplyTo + byReferences (#203),
- * bySubjectMarker + byHeuristic (#204).
+ * Strategies, in cascade order: header-based (byInReplyTo, byReferences),
+ * then subject-based fallbacks (bySubjectMarker, byHeuristic). The
+ * heuristic is the weakest signal, so it runs last and additionally
+ * filters by sender + 30-day window before verifySender.
  *
  * Not declared `final` (against the project default) so the cascade
  * contract can be exercised by a test-only subclass that swaps a single
@@ -99,12 +101,52 @@ class ThreadResolver
 
     protected function bySubjectMarker(Message $message, int $restaurantId): ?ReservationRequest
     {
-        return null;
+        $subject = (string) $message->getSubject();
+
+        if (! preg_match('/\[Res #(\d+)\]/', $subject, $matches)) {
+            return null;
+        }
+
+        return ReservationRequest::query()
+            ->whereKey((int) $matches[1])
+            ->where('restaurant_id', $restaurantId)
+            ->first();
     }
+
+    private const REPLY_PREFIX_PATTERN = '/^(?:re|aw|antw)(?:\[\d+\])?:\s*/i';
 
     protected function byHeuristic(Message $message, int $restaurantId): ?ReservationRequest
     {
-        return null;
+        $subject = (string) $message->getSubject();
+
+        if (! preg_match(self::REPLY_PREFIX_PATTERN, $subject)) {
+            return null;
+        }
+
+        $stripped = trim((string) preg_replace(self::REPLY_PREFIX_PATTERN, '', $subject));
+        if ($stripped === '') {
+            return null;
+        }
+
+        $from = strtolower(trim((string) ($message->getFrom()[0]->mail ?? '')));
+        if ($from === '') {
+            return null;
+        }
+
+        $candidates = ReservationMessage::query()
+            ->where('direction', MessageDirection::Out)
+            ->where('subject', $stripped)
+            ->where('sent_at', '>=', now()->subDays(30))
+            ->whereHas('reservationRequest', fn ($query) => $query->where('restaurant_id', $restaurantId))
+            ->with('reservationRequest')
+            ->latest('sent_at')
+            ->get();
+
+        $match = $candidates->first(
+            fn (ReservationMessage $candidate) => strtolower(trim((string) $candidate->reservationRequest?->guest_email)) === $from,
+        );
+
+        return $match?->reservationRequest;
     }
 
     protected function verifySender(ReservationRequest $request, Message $message): ?ReservationRequest
