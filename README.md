@@ -143,20 +143,28 @@ reservation-agent/
 
 ---
 
-## Bewusst NICHT in V1.0
+## Roadmap nach V1.0
 
-| Feature                                 | Version |
-|-----------------------------------------|---------|
-| OpenTable / TheFork / Quandoo Anbindung | V2.0    |
-| Google Reserve / Google Business        | V2.0    |
-| Automatischer Mailversand ohne Freigabe | V2.0    |
-| Tischplan / grafische Sitzordnung       | V2.0    |
-| Zahlungs-Hinterlegung / No-Show-Gebühr  | V2.0    |
-| Mehrsprachige Antworten                 | V2.0    |
-| Analytics / Reporting                   | V2.0    |
-| Multi-Standort-Verwaltung > 5 Standorte | V3.0    |
-| Mobile App                              | V3.0    |
-| Lokale KI (Ollama/Llama)                | V3.0    |
+| Feature                                          | Version | Status                                                              |
+|--------------------------------------------------|---------|---------------------------------------------------------------------|
+| Mail-Threading                                   | V2.0    | scoped → [PRD-006](docs/PRD-006-mail-threading.md)                  |
+| Automatischer Mailversand (opt-in mit Hard-Gates)| V2.0    | scoped → [PRD-007](docs/PRD-007-auto-send-trust-modes.md)           |
+| Analytics / Reporting                            | V2.0    | scoped → [PRD-008](docs/PRD-008-dashboard-analytics.md)             |
+| Export CSV/PDF                                   | V2.0    | scoped → [PRD-009](docs/PRD-009-export-csv-pdf.md)                  |
+| Push / Sound-Alerts / Daily Digest               | V2.0    | scoped → [PRD-010](docs/PRD-010-push-and-sound-alerts.md)           |
+| Tischplan / grafische Sitzordnung                | V3.0    | (Robustheit + Tischplan)                                            |
+| WebSockets via Laravel Reverb                    | V3.0    | siehe [decision](docs/decisions/polling-vs-websockets-v1.md)        |
+| DSGVO-UI für Betroffenen-Löschanträge            | V3.0    | siehe [decision](docs/decisions/failed-email-imports-retention.md)  |
+| Multi-Standort-Verwaltung > 5 Standorte          | V3.0    |                                                                     |
+| KI lernt aus manuellen Edits (RAG)               | V4.0    | (KI-Differenzierung)                                                |
+| Tonalität pro Restaurant statt global            | V4.0    | siehe [decision](docs/decisions/ai-tonality-prompts.md)             |
+| Mehrsprachige Antworten                          | V4.0    |                                                                     |
+| Lokale KI (Ollama / vLLM)                        | V4.0+   | siehe [decision](docs/decisions/openai-data-protection.md)          |
+| Embeddable Widget / iframe-Variante              | V5.0    | (Reichweite)                                                        |
+| OpenTable / TheFork / Quandoo Anbindung          | V5.0    | (Reichweite)                                                        |
+| Google Reserve / Google Business                 | V5.0    | (Reichweite)                                                        |
+| Mobile App                                       | V5.0+   | eigene Produkt-Linie                                                |
+| Zahlungs-Hinterlegung / No-Show-Gebühr           | offen   | nicht versionsgebunden                                              |
 
 ---
 
