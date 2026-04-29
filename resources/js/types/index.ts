@@ -121,3 +121,17 @@ export interface ReservationRequestDetail extends ReservationRequestRow {
     raw_email_body: string | null;
     latest_reply: ReservationReplySummary | null;
 }
+
+export type MessageDirection = 'in' | 'out';
+
+export interface ThreadMessage {
+    id: number;
+    direction: MessageDirection;
+    subject: string;
+    from_address: string;
+    to_address: string;
+    body_plain: string;
+    sent_at: string | null;
+    received_at: string | null;
+    approved_by: string | null;
+}
