@@ -90,6 +90,22 @@ class AutoSendDeciderTest extends TestCase
         $this->assertSame(AutoSendDecider::REASON_FALLBACK_TEXT, $decision->reason);
     }
 
+    public function test_it_blocks_auto_send_when_is_fallback_flag_is_true_regardless_of_body(): void
+    {
+        // Body is a normal-looking reply — only the flag distinguishes
+        // it as a fallback. The decider must trust the persisted flag
+        // ahead of the brittle string match.
+        $reply = $this->makeReplyOnRestaurantWithMode(SendMode::Auto, replyOverrides: [
+            'body' => 'Vielen Dank für Ihre Reservierungsanfrage. Gerne erwarten wir Sie.',
+            'is_fallback' => true,
+        ]);
+
+        $decision = $this->decide($reply);
+
+        $this->assertSame(AutoSendDecision::DECISION_MANUAL, $decision->decision);
+        $this->assertSame(AutoSendDecider::REASON_FALLBACK_TEXT, $decision->reason);
+    }
+
     public function test_it_blocks_auto_send_when_party_size_exceeds_limit(): void
     {
         $reply = $this->makeReplyOnRestaurantWithMode(

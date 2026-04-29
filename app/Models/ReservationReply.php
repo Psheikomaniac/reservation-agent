@@ -31,6 +31,7 @@ class ReservationReply extends Model
         'sent_at',
         'error_message',
         'outbound_message_id',
+        'is_fallback',
     ];
 
     /**
@@ -45,6 +46,7 @@ class ReservationReply extends Model
             'ai_prompt_snapshot' => 'array',
             'approved_at' => 'datetime',
             'sent_at' => 'datetime',
+            'is_fallback' => 'boolean',
         ];
     }
 

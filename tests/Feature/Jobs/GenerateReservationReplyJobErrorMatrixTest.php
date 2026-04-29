@@ -103,6 +103,7 @@ class GenerateReservationReplyJobErrorMatrixTest extends TestCase
         $reply = ReservationReply::withoutGlobalScopes()->where('reservation_request_id', $request->id)->sole();
         $this->assertSame(ReservationReplyStatus::Draft, $reply->status);
         $this->assertSame(OpenAiReplyGenerator::FALLBACK_TEXT, $reply->body);
+        $this->assertTrue($reply->is_fallback, '401 fallback must set is_fallback flag for the auto-send hard gate.');
     }
 
     public function test_http_429_first_attempt_releases_with_60_seconds_and_writes_no_draft(): void
@@ -132,6 +133,7 @@ class GenerateReservationReplyJobErrorMatrixTest extends TestCase
         /** @var ReservationReply $reply */
         $reply = ReservationReply::withoutGlobalScopes()->where('reservation_request_id', $request->id)->sole();
         $this->assertSame(OpenAiReplyGenerator::FALLBACK_TEXT, $reply->body);
+        $this->assertTrue($reply->is_fallback, '429-after-retry fallback must set is_fallback flag.');
     }
 
     public function test_5xx_or_timeout_falls_back_immediately_with_no_retry(): void
@@ -151,5 +153,25 @@ class GenerateReservationReplyJobErrorMatrixTest extends TestCase
         /** @var ReservationReply $reply */
         $reply = ReservationReply::withoutGlobalScopes()->where('reservation_request_id', $request->id)->sole();
         $this->assertSame(OpenAiReplyGenerator::FALLBACK_TEXT, $reply->body);
+        $this->assertTrue($reply->is_fallback, 'timeout / 5xx fallback must set is_fallback flag.');
+    }
+
+    public function test_happy_path_does_not_set_is_fallback_flag(): void
+    {
+        $request = $this->makeRequest();
+        $this->app->bind(ReplyGenerator::class, fn () => new class implements ReplyGenerator
+        {
+            public function generate(array $context): string
+            {
+                return 'Generierter Antworttext.';
+            }
+        });
+
+        $job = $this->makeJob($request->id, attempts: 1);
+        $job->handle();
+
+        /** @var ReservationReply $reply */
+        $reply = ReservationReply::withoutGlobalScopes()->where('reservation_request_id', $request->id)->sole();
+        $this->assertFalse($reply->is_fallback, 'Successful generation must leave is_fallback at false.');
     }
 }

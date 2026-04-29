@@ -124,6 +124,7 @@ class GenerateReservationReplyJob implements ShouldQueue
             'status' => ReservationReplyStatus::Draft,
             'body' => OpenAiReplyGenerator::FALLBACK_TEXT,
             'ai_prompt_snapshot' => $context,
+            'is_fallback' => true,
         ]);
     }
 }
