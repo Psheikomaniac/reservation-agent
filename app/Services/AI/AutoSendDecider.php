@@ -120,12 +120,18 @@ final class AutoSendDecider
     }
 
     /**
-     * Match against the PRD-005 fallback constant. PRD-007 risk note
-     * acknowledges the brittleness of string matching; #216 introduces
-     * a dedicated `is_fallback` flag that will replace this check.
+     * The persisted `is_fallback` flag is the authoritative signal — set
+     * by `GenerateReservationReplyJob` on every error path that lands on
+     * the neutral fallback text. The string-equality check stays as
+     * defense-in-depth so a flag-less legacy row (or a future code path
+     * that forgets to flip the flag) is still caught.
      */
     private function isFallbackText(ReservationReply $reply): bool
     {
+        if ($reply->is_fallback === true) {
+            return true;
+        }
+
         return $reply->body === OpenAiReplyGenerator::FALLBACK_TEXT;
     }
 
