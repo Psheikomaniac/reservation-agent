@@ -7,8 +7,8 @@ namespace App\Services\Email;
 use App\Enums\MessageDirection;
 use App\Models\ReservationMessage;
 use App\Models\ReservationRequest;
+use App\Services\Email\DTO\FetchedEmail;
 use Psr\Log\LoggerInterface;
-use Webklex\PHPIMAP\Message;
 
 /**
  * Resolves an incoming mail to an existing ReservationRequest using a
@@ -27,6 +27,8 @@ use Webklex\PHPIMAP\Message;
  */
 class ThreadResolver
 {
+    private const REPLY_PREFIX_PATTERN = '/^(?:re|aw|antw)(?:\[\d+\])?:\s*/i';
+
     public function __construct(
         private readonly LoggerInterface $logger,
     ) {}
@@ -36,35 +38,35 @@ class ThreadResolver
      * null when no strategy matches or when the verified sender does not
      * match the reservation's stored guest email.
      */
-    public function resolveForIncoming(Message $message, int $restaurantId): ?ReservationRequest
+    public function resolveForIncoming(FetchedEmail $email, int $restaurantId): ?ReservationRequest
     {
-        if ($candidate = $this->byInReplyTo($message, $restaurantId)) {
-            return $this->verifySender($candidate, $message);
+        if ($candidate = $this->byInReplyTo($email, $restaurantId)) {
+            return $this->verifySender($candidate, $email);
         }
 
-        if ($candidate = $this->byReferences($message, $restaurantId)) {
-            return $this->verifySender($candidate, $message);
+        if ($candidate = $this->byReferences($email, $restaurantId)) {
+            return $this->verifySender($candidate, $email);
         }
 
-        if ($candidate = $this->bySubjectMarker($message, $restaurantId)) {
-            return $this->verifySender($candidate, $message);
+        if ($candidate = $this->bySubjectMarker($email, $restaurantId)) {
+            return $this->verifySender($candidate, $email);
         }
 
-        if ($candidate = $this->byHeuristic($message, $restaurantId)) {
-            return $this->verifySender($candidate, $message);
+        if ($candidate = $this->byHeuristic($email, $restaurantId)) {
+            return $this->verifySender($candidate, $email);
         }
 
         return null;
     }
 
-    protected function byInReplyTo(Message $message, int $restaurantId): ?ReservationRequest
+    protected function byInReplyTo(FetchedEmail $email, int $restaurantId): ?ReservationRequest
     {
-        return $this->lookupOutboundMessage(trim((string) $message->getInReplyTo()), $restaurantId);
+        return $this->lookupOutboundMessage(trim($email->inReplyTo), $restaurantId);
     }
 
-    protected function byReferences(Message $message, int $restaurantId): ?ReservationRequest
+    protected function byReferences(FetchedEmail $email, int $restaurantId): ?ReservationRequest
     {
-        $references = trim((string) $message->getReferences());
+        $references = trim($email->references);
         if ($references === '') {
             return null;
         }
@@ -83,27 +85,9 @@ class ThreadResolver
         return null;
     }
 
-    private function lookupOutboundMessage(string $messageId, int $restaurantId): ?ReservationRequest
+    protected function bySubjectMarker(FetchedEmail $email, int $restaurantId): ?ReservationRequest
     {
-        if ($messageId === '') {
-            return null;
-        }
-
-        $hit = ReservationMessage::query()
-            ->where('direction', MessageDirection::Out)
-            ->where('message_id', $messageId)
-            ->whereHas('reservationRequest', fn ($query) => $query->where('restaurant_id', $restaurantId))
-            ->with('reservationRequest')
-            ->first();
-
-        return $hit?->reservationRequest;
-    }
-
-    protected function bySubjectMarker(Message $message, int $restaurantId): ?ReservationRequest
-    {
-        $subject = (string) $message->getSubject();
-
-        if (! preg_match('/\[Res #(\d+)\]/', $subject, $matches)) {
+        if (! preg_match('/\[Res #(\d+)\]/', $email->subject, $matches)) {
             return null;
         }
 
@@ -113,11 +97,9 @@ class ThreadResolver
             ->first();
     }
 
-    private const REPLY_PREFIX_PATTERN = '/^(?:re|aw|antw)(?:\[\d+\])?:\s*/i';
-
-    protected function byHeuristic(Message $message, int $restaurantId): ?ReservationRequest
+    protected function byHeuristic(FetchedEmail $email, int $restaurantId): ?ReservationRequest
     {
-        $subject = (string) $message->getSubject();
+        $subject = $email->subject;
 
         if (! preg_match(self::REPLY_PREFIX_PATTERN, $subject)) {
             return null;
@@ -128,7 +110,7 @@ class ThreadResolver
             return null;
         }
 
-        $from = strtolower(trim((string) ($message->getFrom()[0]->mail ?? '')));
+        $from = strtolower(trim($email->senderEmail));
         if ($from === '') {
             return null;
         }
@@ -149,15 +131,31 @@ class ThreadResolver
         return $match?->reservationRequest;
     }
 
-    protected function verifySender(ReservationRequest $request, Message $message): ?ReservationRequest
+    private function lookupOutboundMessage(string $messageId, int $restaurantId): ?ReservationRequest
     {
-        $from = strtolower(trim((string) ($message->getFrom()[0]->mail ?? '')));
+        if ($messageId === '') {
+            return null;
+        }
+
+        $hit = ReservationMessage::query()
+            ->where('direction', MessageDirection::Out)
+            ->where('message_id', $messageId)
+            ->whereHas('reservationRequest', fn ($query) => $query->where('restaurant_id', $restaurantId))
+            ->with('reservationRequest')
+            ->first();
+
+        return $hit?->reservationRequest;
+    }
+
+    protected function verifySender(ReservationRequest $request, FetchedEmail $email): ?ReservationRequest
+    {
+        $from = strtolower(trim($email->senderEmail));
         $expected = strtolower(trim((string) $request->guest_email));
 
         if ($from === '' || $expected === '' || $from !== $expected) {
             $this->logger->warning('thread resolver: sender mismatch, falling back to new reservation', [
                 'reservation_id' => $request->id,
-                'message_id' => (string) $message->getMessageId(),
+                'message_id' => $email->messageId,
             ]);
 
             return null;

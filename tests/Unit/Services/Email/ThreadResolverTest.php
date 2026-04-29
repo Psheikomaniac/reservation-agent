@@ -7,15 +7,13 @@ namespace Tests\Unit\Services\Email;
 use App\Models\ReservationMessage;
 use App\Models\ReservationRequest;
 use App\Models\Restaurant;
+use App\Services\Email\DTO\FetchedEmail;
 use App\Services\Email\ThreadResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
-use Mockery\MockInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Tests\TestCase;
-use Webklex\PHPIMAP\Address;
-use Webklex\PHPIMAP\Message;
 
 class ThreadResolverTest extends TestCase
 {
@@ -34,7 +32,7 @@ class ThreadResolverTest extends TestCase
 
         $resolver = new ThreadResolver($logger);
 
-        $this->assertNull($resolver->resolveForIncoming($this->makeMessage('attacker@example.com'), 1));
+        $this->assertNull($resolver->resolveForIncoming($this->makeEmail('attacker@example.com'), 1));
     }
 
     public function test_it_rejects_spoofed_sender_even_when_a_strategy_matches(): void
@@ -49,7 +47,7 @@ class ThreadResolverTest extends TestCase
         $resolver = $this->makeResolverWithStrategyHit($logger, $request);
 
         $this->assertNull(
-            $resolver->resolveForIncoming($this->makeMessage('attacker@example.com', '<spoof@x>'), 1),
+            $resolver->resolveForIncoming($this->makeEmail('attacker@example.com', '<spoof@x>'), 1),
             'Spoofed sender must not yield a thread match.',
         );
     }
@@ -70,7 +68,7 @@ class ThreadResolverTest extends TestCase
 
         $resolver = $this->makeResolverWithStrategyHit($logger, $request);
 
-        $resolver->resolveForIncoming($this->makeMessage('attacker@example.com', '<m@x>'), 1);
+        $resolver->resolveForIncoming($this->makeEmail('attacker@example.com', '<m@x>'), 1);
 
         $serialized = $captured['message'].json_encode($captured['context']);
 
@@ -89,25 +87,9 @@ class ThreadResolverTest extends TestCase
 
         $resolver = $this->makeResolverWithStrategyHit($logger, $request);
 
-        $resolved = $resolver->resolveForIncoming($this->makeMessage(' guest@example.com '), 1);
+        $resolved = $resolver->resolveForIncoming($this->makeEmail(' guest@example.com '), 1);
 
         $this->assertSame($request, $resolved);
-    }
-
-    private function makeResolverWithStrategyHit(LoggerInterface $logger, ReservationRequest $hit): ThreadResolver
-    {
-        return new class($logger, $hit) extends ThreadResolver
-        {
-            public function __construct(LoggerInterface $logger, private readonly ReservationRequest $hit)
-            {
-                parent::__construct($logger);
-            }
-
-            protected function byInReplyTo(Message $message, int $restaurantId): ?ReservationRequest
-            {
-                return $this->hit;
-            }
-        };
     }
 
     public function test_it_resolves_by_in_reply_to_header(): void
@@ -117,7 +99,7 @@ class ThreadResolverTest extends TestCase
         $resolver = new ThreadResolver(new NullLogger);
 
         $resolved = $resolver->resolveForIncoming(
-            $this->makeMessage('guest@example.com', inReplyTo: $outboundId),
+            $this->makeEmail('guest@example.com', inReplyTo: $outboundId),
             $request->restaurant_id,
         );
 
@@ -132,7 +114,7 @@ class ThreadResolverTest extends TestCase
         $resolver = new ThreadResolver(new NullLogger);
 
         $resolved = $resolver->resolveForIncoming(
-            $this->makeMessage(
+            $this->makeEmail(
                 'guest@example.com',
                 inReplyTo: '<unknown@x>',
                 references: '<root@x> '.$outboundId.' <other@x>',
@@ -153,7 +135,7 @@ class ThreadResolverTest extends TestCase
         $resolver = new ThreadResolver(new NullLogger);
 
         $resolved = $resolver->resolveForIncoming(
-            $this->makeMessage('guest@example.com', inReplyTo: $outboundId),
+            $this->makeEmail('guest@example.com', inReplyTo: $outboundId),
             $otherRestaurant->id,
         );
 
@@ -174,30 +156,11 @@ class ThreadResolverTest extends TestCase
         $resolver = new ThreadResolver($logger);
 
         $resolved = $resolver->resolveForIncoming(
-            $this->makeMessage('attacker@example.com', inReplyTo: $outboundId),
+            $this->makeEmail('attacker@example.com', inReplyTo: $outboundId),
             $request->restaurant_id,
         );
 
         $this->assertNull($resolved, 'A spoofed In-Reply-To must not yield a thread match when the sender differs.');
-    }
-
-    /**
-     * @return array{0: ReservationRequest, 1: string} the request and the outbound message-id
-     */
-    private function seedOutboundThread(string $guestEmail): array
-    {
-        $restaurant = Restaurant::factory()->create();
-        $request = ReservationRequest::factory()->create([
-            'restaurant_id' => $restaurant->id,
-            'guest_email' => $guestEmail,
-        ]);
-
-        $outbound = ReservationMessage::factory()
-            ->outbound()
-            ->forReservationRequest($request)
-            ->create();
-
-        return [$request, $outbound->message_id];
     }
 
     public function test_it_resolves_by_subject_marker(): void
@@ -211,7 +174,7 @@ class ThreadResolverTest extends TestCase
         $resolver = new ThreadResolver(new NullLogger);
 
         $resolved = $resolver->resolveForIncoming(
-            $this->makeMessage('guest@example.com', subject: 'Re: [Res #'.$request->id.'] Reservierung'),
+            $this->makeEmail('guest@example.com', subject: 'Re: [Res #'.$request->id.'] Reservierung'),
             $restaurant->id,
         );
 
@@ -227,7 +190,7 @@ class ThreadResolverTest extends TestCase
         $resolver = new ThreadResolver(new NullLogger);
 
         $resolved = $resolver->resolveForIncoming(
-            $this->makeMessage('guest@example.com', subject: '[Res #'.$request->id.']'),
+            $this->makeEmail('guest@example.com', subject: '[Res #'.$request->id.']'),
             $otherRestaurant->id,
         );
 
@@ -249,7 +212,7 @@ class ThreadResolverTest extends TestCase
         $resolver = new ThreadResolver(new NullLogger);
 
         $resolved = $resolver->resolveForIncoming(
-            $this->makeMessage('guest@example.com', subject: 'Re: Reservierung am 12.05.'),
+            $this->makeEmail('guest@example.com', subject: 'Re: Reservierung am 12.05.'),
             $restaurant->id,
         );
 
@@ -272,7 +235,7 @@ class ThreadResolverTest extends TestCase
         $resolver = new ThreadResolver(new NullLogger);
 
         $resolved = $resolver->resolveForIncoming(
-            $this->makeMessage('guest@example.com', subject: 'Re: Reservierung am 01.01.'),
+            $this->makeEmail('guest@example.com', subject: 'Re: Reservierung am 01.01.'),
             $restaurant->id,
         );
 
@@ -295,7 +258,7 @@ class ThreadResolverTest extends TestCase
 
         foreach (['Re:', 'RE:', 'AW:', 'Antw:', 'Re[2]:'] as $prefix) {
             $resolved = $resolver->resolveForIncoming(
-                $this->makeMessage('guest@example.com', subject: $prefix.' Tisch fuer 4 Personen'),
+                $this->makeEmail('guest@example.com', subject: $prefix.' Tisch fuer 4 Personen'),
                 $restaurant->id,
             );
 
@@ -322,7 +285,7 @@ class ThreadResolverTest extends TestCase
         $resolver = new ThreadResolver($logger);
 
         $resolved = $resolver->resolveForIncoming(
-            $this->makeMessage('attacker@example.com', subject: 'Re: Reservierung Mai'),
+            $this->makeEmail('attacker@example.com', subject: 'Re: Reservierung Mai'),
             $restaurant->id,
         );
 
@@ -332,29 +295,58 @@ class ThreadResolverTest extends TestCase
         );
     }
 
+    private function makeResolverWithStrategyHit(LoggerInterface $logger, ReservationRequest $hit): ThreadResolver
+    {
+        return new class($logger, $hit) extends ThreadResolver
+        {
+            public function __construct(LoggerInterface $logger, private readonly ReservationRequest $hit)
+            {
+                parent::__construct($logger);
+            }
+
+            protected function byInReplyTo(FetchedEmail $email, int $restaurantId): ?ReservationRequest
+            {
+                return $this->hit;
+            }
+        };
+    }
+
     /**
-     * Builds a Mockery double of Webklex Message with a single From address,
-     * Message-ID, In-Reply-To, References, and Subject. Defaults keep the
-     * older tests stable: when In-Reply-To/References/Subject are empty
-     * strings the strategies short-circuit just like before.
+     * @return array{0: ReservationRequest, 1: string} the request and the outbound message-id
      */
-    private function makeMessage(
+    private function seedOutboundThread(string $guestEmail): array
+    {
+        $restaurant = Restaurant::factory()->create();
+        $request = ReservationRequest::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'guest_email' => $guestEmail,
+        ]);
+
+        $outbound = ReservationMessage::factory()
+            ->outbound()
+            ->forReservationRequest($request)
+            ->create();
+
+        return [$request, $outbound->message_id];
+    }
+
+    private function makeEmail(
         string $fromMail,
         string $messageId = '<test@example.com>',
         string $inReplyTo = '',
         string $references = '',
         string $subject = '',
-    ): Message&MockInterface {
-        $address = Mockery::mock(Address::class);
-        $address->mail = $fromMail;
-
-        $message = Mockery::mock(Message::class);
-        $message->shouldReceive('getFrom')->andReturn([$address]);
-        $message->shouldReceive('getMessageId')->andReturn($messageId);
-        $message->shouldReceive('getInReplyTo')->andReturn($inReplyTo);
-        $message->shouldReceive('getReferences')->andReturn($references);
-        $message->shouldReceive('getSubject')->andReturn($subject);
-
-        return $message;
+    ): FetchedEmail {
+        return new FetchedEmail(
+            messageId: $messageId,
+            body: '',
+            senderEmail: $fromMail,
+            senderName: null,
+            rawHeaders: '',
+            rawBody: '',
+            inReplyTo: $inReplyTo,
+            references: $references,
+            subject: $subject,
+        );
     }
 }

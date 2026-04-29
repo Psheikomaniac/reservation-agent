@@ -43,6 +43,10 @@ final class WebklexImapMailbox implements ImapMailbox
                 senderName: $senderName,
                 rawHeaders: (string) $message->getHeader()->raw,
                 rawBody: $body,
+                inReplyTo: trim((string) $message->getInReplyTo()),
+                references: trim((string) $message->getReferences()),
+                subject: trim((string) $message->getSubject()),
+                toAddress: $this->extractFirstRecipient($message),
             );
 
             $this->seenCache[$messageId] = $message;
@@ -100,6 +104,23 @@ final class WebklexImapMailbox implements ImapMailbox
         );
 
         return $result ?? $value;
+    }
+
+    private function extractFirstRecipient(Message $message): string
+    {
+        try {
+            $to = $message->getTo();
+        } catch (Throwable) {
+            return '';
+        }
+
+        if ($to === null) {
+            return '';
+        }
+
+        $first = is_array($to) ? ($to[0] ?? null) : (method_exists($to, 'first') ? $to->first() : null);
+
+        return $first instanceof Address ? (string) $first->mail : '';
     }
 
     private function extractSender(Message $message): ?Address
