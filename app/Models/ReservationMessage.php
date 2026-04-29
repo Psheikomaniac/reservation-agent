@@ -2,18 +2,15 @@
 
 namespace App\Models;
 
-use App\Enums\ReservationReplyStatus;
-use App\Models\Scopes\RestaurantScope;
-use Database\Factories\ReservationReplyFactory;
-use Illuminate\Database\Eloquent\Attributes\ScopedBy;
+use App\Enums\MessageDirection;
+use Database\Factories\ReservationMessageFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[ScopedBy(RestaurantScope::class)]
-class ReservationReply extends Model
+final class ReservationMessage extends Model
 {
-    /** @use HasFactory<ReservationReplyFactory> */
+    /** @use HasFactory<ReservationMessageFactory> */
     use HasFactory;
 
     /**
@@ -23,14 +20,17 @@ class ReservationReply extends Model
      */
     protected $fillable = [
         'reservation_request_id',
-        'status',
-        'body',
-        'ai_prompt_snapshot',
-        'approved_by',
-        'approved_at',
+        'direction',
+        'message_id',
+        'in_reply_to',
+        'references',
+        'subject',
+        'from_address',
+        'to_address',
+        'body_plain',
+        'raw_headers',
         'sent_at',
-        'error_message',
-        'outbound_message_id',
+        'received_at',
     ];
 
     /**
@@ -41,10 +41,9 @@ class ReservationReply extends Model
     protected function casts(): array
     {
         return [
-            'status' => ReservationReplyStatus::class,
-            'ai_prompt_snapshot' => 'array',
-            'approved_at' => 'datetime',
+            'direction' => MessageDirection::class,
             'sent_at' => 'datetime',
+            'received_at' => 'datetime',
         ];
     }
 
@@ -54,13 +53,5 @@ class ReservationReply extends Model
     public function reservationRequest(): BelongsTo
     {
         return $this->belongsTo(ReservationRequest::class);
-    }
-
-    /**
-     * @return BelongsTo<User, $this>
-     */
-    public function approver(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'approved_by');
     }
 }

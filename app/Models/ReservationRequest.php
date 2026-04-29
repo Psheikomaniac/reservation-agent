@@ -76,6 +76,14 @@ class ReservationRequest extends Model
     }
 
     /**
+     * @return HasMany<ReservationMessage, $this>
+     */
+    public function messages(): HasMany
+    {
+        return $this->hasMany(ReservationMessage::class);
+    }
+
+    /**
      * @return HasOne<ReservationReply, $this>
      */
     public function latestReply(): HasOne
