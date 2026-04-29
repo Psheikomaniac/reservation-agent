@@ -4,14 +4,17 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Enums\MessageDirection;
 use App\Events\ReservationRequestReceived;
 use App\Models\FailedEmailImport;
+use App\Models\ReservationMessage;
 use App\Models\ReservationRequest;
 use App\Models\Restaurant;
 use App\Services\Email\Contracts\ImapMailbox;
 use App\Services\Email\Contracts\ImapMailboxFactory;
 use App\Services\Email\DTO\FetchedEmail;
 use App\Services\Email\EmailReservationParser;
+use App\Services\Email\ThreadResolver;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Queue\Queueable;
@@ -49,8 +52,11 @@ final class FetchReservationEmailsJob implements ShouldQueue
         ]);
     }
 
-    public function handle(ImapMailboxFactory $factory, EmailReservationParser $parser): void
-    {
+    public function handle(
+        ImapMailboxFactory $factory,
+        EmailReservationParser $parser,
+        ThreadResolver $threadResolver,
+    ): void {
         $restaurant = Restaurant::find($this->restaurantId);
 
         if ($restaurant === null || $restaurant->imap_host === null || $restaurant->imap_host === '') {
@@ -61,7 +67,7 @@ final class FetchReservationEmailsJob implements ShouldQueue
 
         foreach ($mailbox->fetchUnseen() as $email) {
             try {
-                $this->processEmail($email, $mailbox, $parser, $restaurant);
+                $this->processEmail($email, $mailbox, $parser, $threadResolver, $restaurant);
             } catch (Throwable $e) {
                 $this->recordFailure($restaurant, $email, $e);
             }
@@ -72,9 +78,17 @@ final class FetchReservationEmailsJob implements ShouldQueue
         FetchedEmail $email,
         ImapMailbox $mailbox,
         EmailReservationParser $parser,
+        ThreadResolver $threadResolver,
         Restaurant $restaurant,
     ): void {
         if ($email->messageId !== '' && $this->alreadyImported($email->messageId)) {
+            $mailbox->markSeen($email);
+
+            return;
+        }
+
+        if ($threadParent = $threadResolver->resolveForIncoming($email, $restaurant->id)) {
+            $this->appendAsThreadMessage($threadParent, $email);
             $mailbox->markSeen($email);
 
             return;
@@ -114,7 +128,33 @@ final class FetchReservationEmailsJob implements ShouldQueue
 
     private function alreadyImported(string $messageId): bool
     {
-        return ReservationRequest::where('email_message_id', $messageId)->exists();
+        return ReservationRequest::where('email_message_id', $messageId)->exists()
+            || ReservationMessage::where('message_id', $messageId)->exists();
+    }
+
+    private function appendAsThreadMessage(ReservationRequest $parent, FetchedEmail $email): void
+    {
+        try {
+            ReservationMessage::create([
+                'reservation_request_id' => $parent->id,
+                'direction' => MessageDirection::In,
+                'message_id' => $email->messageId,
+                'in_reply_to' => $email->inReplyTo !== '' ? $email->inReplyTo : null,
+                'references' => $email->references !== '' ? $email->references : null,
+                'subject' => $email->subject,
+                'from_address' => $email->senderEmail,
+                'to_address' => $email->toAddress,
+                'body_plain' => $email->body,
+                'raw_headers' => $email->rawHeaders,
+                'received_at' => now(),
+            ]);
+        } catch (QueryException $e) {
+            // The unique constraint on message_id makes thread-message inserts
+            // idempotent — a duplicate fetch is a no-op, not an error path.
+            if (! $this->isUniqueViolation($e)) {
+                throw $e;
+            }
+        }
     }
 
     private function isUniqueViolation(QueryException $e): bool
