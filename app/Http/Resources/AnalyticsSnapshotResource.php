@@ -17,7 +17,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *
  * @property AnalyticsSnapshot $resource
  */
-class AnalyticsSnapshotResource extends JsonResource
+final class AnalyticsSnapshotResource extends JsonResource
 {
     /**
      * @return array<string, mixed>

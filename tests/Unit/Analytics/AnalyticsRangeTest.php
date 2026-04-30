@@ -6,7 +6,7 @@ namespace Tests\Unit\Analytics;
 
 use App\Enums\AnalyticsRange;
 use Illuminate\Support\Carbon;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 class AnalyticsRangeTest extends TestCase
 {
