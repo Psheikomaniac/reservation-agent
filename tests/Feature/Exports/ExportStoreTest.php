@@ -135,7 +135,9 @@ class ExportStoreTest extends TestCase
         ReservationRequest::factory()->forRestaurant($foreign)->count(50)->create();
 
         $this->actingAs($own)
-            ->post(route('exports.store'), ['format' => 'pdf']);
+            ->from('/dashboard')
+            ->post(route('exports.store'), ['format' => 'pdf'])
+            ->assertRedirect();
 
         $audit = ExportAudit::query()->where('user_id', $own->id)->sole();
         $this->assertSame($own->restaurant_id, $audit->restaurant_id);
