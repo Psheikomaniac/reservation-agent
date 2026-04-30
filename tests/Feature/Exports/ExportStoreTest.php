@@ -90,6 +90,63 @@ class ExportStoreTest extends TestCase
         Queue::assertPushed(ExportReservationsJob::class);
     }
 
+    public function test_sync_export_does_not_include_rows_from_another_restaurant(): void
+    {
+        $own = $this->userWithRestaurant();
+        ReservationRequest::factory()
+            ->forRestaurant($own->restaurant)
+            ->create(['guest_name' => 'OwnGuest_'.uniqid()]);
+
+        // Foreign tenant's data must NOT appear in the export
+        // payload, even though both restaurants live in the same
+        // table — the generator runs through `withoutGlobalScopes`
+        // + explicit `where('restaurant_id', ...)` from the user's
+        // restaurant.
+        $foreign = Restaurant::factory()->create();
+        ReservationRequest::factory()
+            ->forRestaurant($foreign)
+            ->count(3)
+            ->create(['guest_name' => 'ForeignGuest_'.uniqid()]);
+
+        $response = $this->actingAs($own)
+            ->post(route('exports.store'), ['format' => 'csv']);
+
+        $response->assertOk();
+
+        ob_start();
+        $response->sendContent();
+        $payload = (string) ob_get_clean();
+
+        $this->assertStringContainsString('OwnGuest_', $payload);
+        $this->assertStringNotContainsString('ForeignGuest_', $payload);
+    }
+
+    public function test_async_export_audit_carries_only_the_callers_restaurant_id(): void
+    {
+        Queue::fake();
+
+        $own = $this->userWithRestaurant();
+        ReservationRequest::factory()->forRestaurant($own->restaurant)->count(150)->create();
+
+        // A foreign restaurant exists in the table; the audit row
+        // and the queued job's `restaurantId` must reference the
+        // caller's tenant only.
+        $foreign = Restaurant::factory()->create();
+        ReservationRequest::factory()->forRestaurant($foreign)->count(50)->create();
+
+        $this->actingAs($own)
+            ->post(route('exports.store'), ['format' => 'pdf']);
+
+        $audit = ExportAudit::query()->where('user_id', $own->id)->sole();
+        $this->assertSame($own->restaurant_id, $audit->restaurant_id);
+        $this->assertSame(150, $audit->record_count);
+
+        Queue::assertPushed(
+            ExportReservationsJob::class,
+            fn ($job) => $job->restaurantId === $own->restaurant_id,
+        );
+    }
+
     public function test_filters_pass_through_to_the_audit_snapshot(): void
     {
         $user = $this->userWithRestaurant();
