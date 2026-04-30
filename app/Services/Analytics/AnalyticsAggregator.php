@@ -17,6 +17,7 @@ use App\Models\ReservationRequest;
 use App\Models\Restaurant;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -350,16 +351,21 @@ final readonly class AnalyticsAggregator
      */
     private function requestsTrend(Restaurant $restaurant, AnalyticsRange $range): array
     {
-        $rows = $this->baseQuery($restaurant, $range)
-            ->selectRaw($this->bucketGroupExpression($range).' as bucket_key, COUNT(*) as count')
-            ->groupBy('bucket_key')
-            ->pluck('count', 'bucket_key')
-            ->all();
+        $timezone = $restaurant->timezone ?? config('app.timezone');
+
+        $counts = $this->baseQuery($restaurant, $range)
+            ->pluck('created_at')
+            ->reduce(function (array $carry, $createdAt) use ($range, $timezone): array {
+                $key = $this->bucketKey($createdAt, $range, $timezone);
+                $carry[$key] = ($carry[$key] ?? 0) + 1;
+
+                return $carry;
+            }, []);
 
         return $this->fillBuckets(
             $range,
             $restaurant,
-            fn (string $key) => (int) ($rows[$key] ?? 0),
+            fn (string $key) => (int) ($counts[$key] ?? 0),
         );
     }
 
@@ -374,18 +380,22 @@ final readonly class AnalyticsAggregator
      */
     private function confirmationRateTrend(Restaurant $restaurant, AnalyticsRange $range): array
     {
-        $totals = $this->baseQuery($restaurant, $range)
-            ->selectRaw($this->bucketGroupExpression($range).' as bucket_key, COUNT(*) as count')
-            ->groupBy('bucket_key')
-            ->pluck('count', 'bucket_key')
-            ->all();
+        $timezone = $restaurant->timezone ?? config('app.timezone');
 
-        $confirmed = $this->baseQuery($restaurant, $range)
-            ->where('status', ReservationStatus::Confirmed->value)
-            ->selectRaw($this->bucketGroupExpression($range).' as bucket_key, COUNT(*) as count')
-            ->groupBy('bucket_key')
-            ->pluck('count', 'bucket_key')
-            ->all();
+        $rows = $this->baseQuery($restaurant, $range)
+            ->get(['created_at', 'status']);
+
+        $totals = [];
+        $confirmed = [];
+
+        foreach ($rows as $row) {
+            $key = $this->bucketKey($row->created_at, $range, $timezone);
+            $totals[$key] = ($totals[$key] ?? 0) + 1;
+
+            if ($row->status === ReservationStatus::Confirmed) {
+                $confirmed[$key] = ($confirmed[$key] ?? 0) + 1;
+            }
+        }
 
         return $this->fillBuckets(
             $range,
@@ -414,7 +424,7 @@ final readonly class AnalyticsAggregator
     {
         $timezone = $restaurant->timezone ?? config('app.timezone');
 
-        $rows = ReservationMessage::query()
+        $createdAts = ReservationMessage::query()
             ->where('direction', MessageDirection::In->value)
             ->whereHas(
                 'reservationRequest',
@@ -424,31 +434,37 @@ final readonly class AnalyticsAggregator
             )
             ->where('reservation_messages.created_at', '>=', $range->startsAt($timezone))
             ->where('reservation_messages.created_at', '<=', $range->endsAt($timezone))
-            ->selectRaw($this->bucketGroupExpression($range, 'reservation_messages.created_at').' as bucket_key, COUNT(*) as count')
-            ->groupBy('bucket_key')
-            ->pluck('count', 'bucket_key')
-            ->all();
+            ->pluck('created_at');
+
+        $counts = [];
+        foreach ($createdAts as $createdAt) {
+            $key = $this->bucketKey($createdAt, $range, $timezone);
+            $counts[$key] = ($counts[$key] ?? 0) + 1;
+        }
 
         return $this->fillBuckets(
             $range,
             $restaurant,
-            fn (string $key) => (int) ($rows[$key] ?? 0),
+            fn (string $key) => (int) ($counts[$key] ?? 0),
         );
     }
 
     /**
-     * SQL expression that yields the bucket key (`Y-m-d` for the
-     * 7d / 30d ranges, `H` for the today/hour view). SQLite's
-     * `strftime` is used because it's the lowest common denominator
-     * across SQLite (local), MySQL and MariaDB. Postgres would need
-     * `to_char`; we'll wrap that behind a repository when Postgres
-     * lands.
+     * Map a row timestamp to its bucket key in the restaurant's
+     * local timezone. PHP-side bucketing keeps the queries
+     * database-agnostic — `strftime` (SQLite) and `DATE_FORMAT` /
+     * `HOUR()` (MySQL) have different syntax and the eventual
+     * Postgres choice would force a third dialect. Bucket
+     * cardinality is bounded by `range->bucketCount()`
+     * (≤ 30 days), so the PHP loop is cheap.
      */
-    private function bucketGroupExpression(AnalyticsRange $range, string $column = 'created_at'): string
+    private function bucketKey(\DateTimeInterface $createdAt, AnalyticsRange $range, string $timezone): string
     {
+        $localized = Carbon::instance($createdAt)->setTimezone($timezone);
+
         return match ($range->bucketSize()) {
-            'hour' => "strftime('%H', {$column})",
-            default => "strftime('%Y-%m-%d', {$column})",
+            'hour' => $localized->format('H'),
+            default => $localized->format('Y-m-d'),
         };
     }
 
