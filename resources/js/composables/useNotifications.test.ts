@@ -183,4 +183,40 @@ describe('useNotifications', () => {
 
         expect(FakeAudio.lastInstance?.src).toBe('/sounds/chime.mp3');
     });
+
+    /**
+     * PRD-010 § Risiken & offene Fragen — "Browser-Block": when neither
+     * `window.Notification` nor `window.Audio` is available (older Safari,
+     * embedded webviews, hardened tabs), the composable must stay
+     * completely silent — every call has to no-op without throwing — so
+     * the daily digest email becomes the only operator-facing channel.
+     *
+     * The denied-permission case for a missing Notification API alone is
+     * already covered by an earlier test; this consolidation gate from
+     * issue #252 specifically asserts the silent `playSound` + silent
+     * `notify` combination so the dashboard polling cannot crash on a
+     * `ReferenceError`.
+     */
+    it('falls back to digest only when Notification API is undefined', () => {
+        Reflect.deleteProperty(window, 'Notification');
+        Reflect.deleteProperty(window, 'Audio');
+
+        const settings = ref(
+            makeSettings({
+                browser_notifications: true,
+                sound_alerts: true,
+                daily_digest: true, // digest stays the only channel
+            }),
+        );
+
+        const handle = useNotifications(settings);
+
+        // Both side-effect functions must no-op silently. If either threw
+        // a `ReferenceError: Notification/Audio is not defined`, the
+        // dashboard diff trigger would crash on the first poll cycle and
+        // tear down the row refresh the digest is meant to back up.
+        expect(() => handle.notify('hi', { body: 'unused' })).not.toThrow();
+        expect(() => handle.playSound()).not.toThrow();
+        expect(NotificationConstructor).not.toHaveBeenCalled();
+    });
 });
