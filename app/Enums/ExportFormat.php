@@ -17,4 +17,41 @@ enum ExportFormat: string
 {
     case Csv = 'csv';
     case Pdf = 'pdf';
+
+    /**
+     * Human-readable label used in the dashboard's export
+     * dropdown and the audit-log surface.
+     */
+    public function label(): string
+    {
+        return match ($this) {
+            self::Csv => 'CSV',
+            self::Pdf => 'PDF',
+        };
+    }
+
+    /**
+     * Outbound `Content-Type` header for both the sync streamed
+     * download and the signed async URL response.
+     */
+    public function mimeType(): string
+    {
+        return match ($this) {
+            self::Csv => 'text/csv; charset=UTF-8',
+            self::Pdf => 'application/pdf',
+        };
+    }
+
+    /**
+     * Filename extension (no leading dot) used when composing the
+     * download filename and persisting the artefact on the storage
+     * disk.
+     */
+    public function extension(): string
+    {
+        return match ($this) {
+            self::Csv => 'csv',
+            self::Pdf => 'pdf',
+        };
+    }
 }
