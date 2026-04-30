@@ -57,6 +57,8 @@ declare module 'ziggy-js' {
     "password.edit": [],
     "password.update": [],
     "appearance": [],
+    "settings.send-mode.edit": [],
+    "settings.send-mode.update": [],
     "register": [],
     "login": [],
     "password.request": [],
