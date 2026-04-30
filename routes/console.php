@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Jobs\FetchReservationEmailsJob;
 use App\Jobs\PruneFailedEmailImportsJob;
 use App\Jobs\PurgeExpiredExportsJob;
+use App\Jobs\SendDailyDigestJob;
 use App\Models\Restaurant;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -31,4 +32,12 @@ Schedule::job(new PruneFailedEmailImportsJob)
 Schedule::job(new PurgeExpiredExportsJob)
     ->name(PurgeExpiredExportsJob::class)
     ->everySixHours()
+    ->withoutOverlapping();
+
+// PRD-010 § Email-Digest. Hourly tick because restaurants in
+// different timezones map "18:00" to different UTC moments — the job
+// itself filters internally on the configured per-user time.
+Schedule::job(new SendDailyDigestJob)
+    ->name(SendDailyDigestJob::class)
+    ->hourly()
     ->withoutOverlapping();
