@@ -19,4 +19,15 @@ final class ReservationReplyPolicy
     {
         return $this->view($user, $reply);
     }
+
+    /**
+     * Cancelling a scheduled auto-send is operator-level — the same
+     * tenancy check `view`/`approve` use applies. We don't gate by
+     * role here: any operator (Owner or Staff) on the right restaurant
+     * can hit the cancel button while the cancel window is open.
+     */
+    public function cancelAutoSend(User $user, ReservationReply $reply): bool
+    {
+        return $this->view($user, $reply);
+    }
 }

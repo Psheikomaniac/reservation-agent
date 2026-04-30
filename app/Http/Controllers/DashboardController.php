@@ -56,6 +56,11 @@ final class DashboardController extends Controller
             'openaiKeyRejectedAt' => $request->user()?->role === UserRole::Owner
                 ? OpenAiKeyHealth::rejectedAt()
                 : null,
+            // PRD-007 mode banner. Surfaces the active send-mode at the
+            // top of the dashboard whenever it deviates from the V1.0
+            // default — so the operator always sees that auto-send is
+            // armed and where to flip the killswitch.
+            'sendMode' => $request->user()?->restaurant?->send_mode->value,
         ]);
     }
 
