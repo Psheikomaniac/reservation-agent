@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { DashboardFilters } from '@/types';
-import { router } from '@inertiajs/vue3';
 import { Download, Info } from 'lucide-vue-next';
 import { ref } from 'vue';
 
@@ -13,28 +12,65 @@ const props = defineProps<{
 
 const exporting = ref(false);
 
+/**
+ * Build a hidden HTML form and submit it so the browser handles
+ * the response natively. Inertia's `router.post` is XHR — it
+ * cannot trigger the save dialog when the controller returns a
+ * `StreamedResponse` for the sync path; the response would
+ * render as a non-Inertia error overlay instead. The async path
+ * returns a 302 redirect, which the browser follows back to the
+ * dashboard with the flash message intact.
+ */
+function appendField(form: HTMLFormElement, name: string, value: unknown): void {
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            appendField(form, `${name}[]`, item);
+        }
+
+        return;
+    }
+
+    if (value === null || value === undefined || value === '') {
+        return;
+    }
+
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = name;
+    input.value = String(value);
+    form.appendChild(input);
+}
+
 function startExport(format: 'csv' | 'pdf') {
     if (exporting.value) {
         return;
     }
     exporting.value = true;
 
-    // Pass the dashboard filter set verbatim — the backend's
-    // ExportRequest reuses the same WithDashboardFilters trait
-    // the dashboard filter request uses, so empty keys + invalid
-    // values get rejected on the server.
-    const payload: Record<string, unknown> = { format, ...props.filters };
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = route('exports.store');
+    form.style.display = 'none';
 
-    router.post(route('exports.store'), payload, {
-        preserveScroll: true,
-        preserveState: true,
-        // For the sync path the controller returns a streamed
-        // download — Inertia's onFinish still fires, the browser
-        // handles the file dialog out-of-band.
-        onFinish: () => {
-            exporting.value = false;
-        },
-    });
+    const csrf = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement | null)?.content ?? '';
+    appendField(form, '_token', csrf);
+    appendField(form, 'format', format);
+
+    for (const [key, value] of Object.entries(props.filters)) {
+        appendField(form, key, value);
+    }
+
+    document.body.appendChild(form);
+    form.submit();
+
+    // Browser owns the response from here. Either a download
+    // dialog (sync) or a navigation back to the dashboard
+    // (async) — both leave us free to clean the form up after a
+    // short tick and re-enable the button.
+    setTimeout(() => {
+        form.remove();
+        exporting.value = false;
+    }, 500);
 }
 </script>
 
