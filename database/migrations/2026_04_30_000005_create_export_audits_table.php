@@ -13,9 +13,14 @@ return new class extends Migration
             $table->foreignId('restaurant_id')
                 ->constrained()
                 ->cascadeOnDelete();
+            // The audit row outlives the user — GDPR reproducibility
+            // and "who exported this" reporting must survive a staff
+            // member leaving. Same convention as
+            // `auto_send_audits.triggered_by_user_id` (PRD-007).
             $table->foreignId('user_id')
+                ->nullable()
                 ->constrained()
-                ->cascadeOnDelete();
+                ->nullOnDelete();
             $table->string('format');
             $table->json('filter_snapshot');
             $table->unsignedInteger('record_count');

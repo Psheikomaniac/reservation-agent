@@ -8,6 +8,7 @@ use App\Enums\ExportFormat;
 use Illuminate\Database\Eloquent\Casts\AsArrayObject;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use RuntimeException;
 
 /**
  * Audit row for every reservation export the operator opens
@@ -92,6 +93,13 @@ class ExportAudit extends Model
      */
     public static function open(User $user, ExportFormat $format, array $filters, int $count): self
     {
+        if ($user->restaurant_id === null) {
+            throw new RuntimeException(
+                'ExportAudit::open requires a user with a resolved restaurant_id; '
+                .'export pipelines must not silently fall through to a null tenant.'
+            );
+        }
+
         return self::create([
             'restaurant_id' => $user->restaurant_id,
             'user_id' => $user->id,

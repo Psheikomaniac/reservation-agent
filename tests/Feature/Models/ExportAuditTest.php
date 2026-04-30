@@ -105,6 +105,32 @@ class ExportAuditTest extends TestCase
         $this->assertSame($filters, $audit->filter_snapshot->getArrayCopy());
     }
 
+    public function test_open_throws_when_the_user_has_no_restaurant(): void
+    {
+        $user = User::factory()->create(['restaurant_id' => null]);
+
+        $this->expectException(\RuntimeException::class);
+
+        ExportAudit::open($user, ExportFormat::Csv, [], 1);
+    }
+
+    public function test_audit_is_retained_when_the_acting_user_is_deleted(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $user = User::factory()->forRestaurant($restaurant)->create();
+        $audit = ExportAudit::open($user, ExportFormat::Csv, ['x' => 1], 5);
+
+        $user->delete();
+        $audit->refresh();
+
+        // GDPR reproducibility: the audit row outlives the user.
+        // user_id is nulled out via the FK's `nullOnDelete`, the
+        // restaurant + payload stay intact.
+        $this->assertNull($audit->user_id);
+        $this->assertSame($restaurant->id, $audit->restaurant_id);
+        $this->assertSame(['x' => 1], $audit->filter_snapshot->getArrayCopy());
+    }
+
     public function test_storage_path_and_expires_at_can_be_set_after_async_run_completes(): void
     {
         $user = User::factory()->forRestaurant(Restaurant::factory()->create())->create();
