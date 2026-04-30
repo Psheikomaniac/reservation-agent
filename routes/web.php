@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PublicReservationController;
 use App\Http\Controllers\ReservationMessagesController;
@@ -16,6 +17,10 @@ Route::get('/', function () {
 Route::get('dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth', 'verified'])
     ->name('dashboard');
+
+Route::get('analytics', [AnalyticsController::class, 'index'])
+    ->middleware(['auth', 'verified'])
+    ->name('analytics.index');
 
 Route::get('reservations/{reservation}', [ReservationRequestController::class, 'show'])
     ->whereNumber('reservation')
