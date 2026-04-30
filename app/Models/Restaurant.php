@@ -82,6 +82,19 @@ class Restaurant extends Model
     }
 
     /**
+     * Audit trail of CSV/PDF exports run for this restaurant
+     * (PRD-009). Append-only and tenant-scoped; cleanup of the
+     * generated files is handled by `PurgeExpiredExportsJob`,
+     * the audit rows themselves are retained.
+     *
+     * @return HasMany<ExportAudit, $this>
+     */
+    public function exportAudits(): HasMany
+    {
+        return $this->hasMany(ExportAudit::class);
+    }
+
+    /**
      * Free seats at a given point in time, or null if the restaurant is
      * closed then.
      *
