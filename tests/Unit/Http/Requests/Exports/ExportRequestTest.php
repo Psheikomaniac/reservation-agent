@@ -113,17 +113,15 @@ class ExportRequestTest extends TestCase
         $this->assertFalse($validator->passes());
     }
 
-    public function test_authorize_requires_a_restaurant_on_the_user(): void
+    public function test_authorize_returns_true_unconditionally(): void
     {
+        // The tenant guard (user without restaurant → 404) is the
+        // controller's job, mirroring AnalyticsController. The form
+        // request stays generic so the controller can choose the
+        // correct response code.
         $request = ExportRequest::create('/exports', 'POST', ['format' => 'csv']);
         $request->setUserResolver(fn () => User::factory()->create(['restaurant_id' => null]));
-        $this->assertFalse($request->authorize());
-
-        $restaurant = Restaurant::factory()->create();
-        $userWithRestaurant = User::factory()->forRestaurant($restaurant)->create();
-        $request2 = ExportRequest::create('/exports', 'POST', ['format' => 'csv']);
-        $request2->setUserResolver(fn () => $userWithRestaurant);
-        $this->assertTrue($request2->authorize());
+        $this->assertTrue($request->authorize());
     }
 
     private function resolvedRequest(array $body): ExportRequest

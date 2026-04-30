@@ -16,11 +16,11 @@ use Illuminate\Validation\Rule;
  * filter the operator has open in the dashboard transfers
  * verbatim into the export — without code duplication.
  *
- * Authorization keeps it simple in V1.0: the user must have a
- * resolved restaurant (one user → one restaurant). The actual
- * tenant scoping happens downstream in the export pipeline,
- * where the filtered query runs through the global
- * `RestaurantScope`.
+ * `authorize()` returns `true` unconditionally. The tenant
+ * guard (user without restaurant → 404) lives in the export
+ * controller, mirroring `AnalyticsController` and keeping the
+ * "missing tenant = 404, not 403" convention consistent across
+ * V2.0 dashboards.
  */
 class ExportRequest extends FormRequest
 {
@@ -28,7 +28,7 @@ class ExportRequest extends FormRequest
 
     public function authorize(): bool
     {
-        return $this->user()?->restaurant_id !== null;
+        return true;
     }
 
     /**
