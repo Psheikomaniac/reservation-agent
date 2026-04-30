@@ -153,7 +153,8 @@ Detail-Begründung & Versions-Themen für V3+ stehen im V3–V7-Roadmap-Spec: [`
 | Automatischer Mailversand (opt-in mit Hard-Gates)| V2.0    | scoped → [PRD-007](docs/PRD-007-auto-send-trust-modes.md)           |
 | Analytics / Reporting                            | V2.0    | scoped → [PRD-008](docs/PRD-008-dashboard-analytics.md)             |
 | Export CSV/PDF                                   | V2.0    | scoped → [PRD-009](docs/PRD-009-export-csv-pdf.md)                  |
-| Push / Sound-Alerts / Daily Digest               | V2.0    | scoped → [PRD-010](docs/PRD-010-push-and-sound-alerts.md)           |
+| Push / Sound-Alerts / Daily Digest (Code-Pfad)   | V2.0    | scoped → [PRD-010](docs/PRD-010-push-and-sound-alerts.md) (Sound-Assets nach V3.0 verschoben) |
+| PRD-010 CC0-Sound-Assets                         | V3.0    | aus V2.0 verschoben (Asset-Auswahl, kein Code-Blocker)              |
 | Tisch-Liste mit Belegungsstatus                  | V3.0    | (Operative Vollständigkeit)                                         |
 | Manuelle Erfassung (Telefon / Walk-in)           | V3.0    |                                                                     |
 | Warteliste passiv                                | V3.0    | aktive Warteliste mit Notify in V4                                  |
