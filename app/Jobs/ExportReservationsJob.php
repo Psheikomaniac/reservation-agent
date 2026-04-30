@@ -87,11 +87,15 @@ class ExportReservationsJob implements ShouldQueue
 
         $payload = $generator->renderBytes($this->format, $restaurant, $this->filters);
 
+        // Deterministic path: a queue retry must not write a
+        // second file. Including the audit id (immutable) and the
+        // format extension is enough to disambiguate; the
+        // PurgeExpiredExportsJob (#241) reads the same path off
+        // the audit row when the artefact's TTL is up.
         $path = sprintf(
-            'exports/%d/%d-%s.%s',
+            'exports/%d/%d.%s',
             $user->id,
             $audit->id,
-            now()->format('Ymd-His'),
             $this->format->extension(),
         );
 

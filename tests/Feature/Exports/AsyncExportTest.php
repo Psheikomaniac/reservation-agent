@@ -93,8 +93,10 @@ class AsyncExportTest extends TestCase
 
         $audit->refresh();
         $this->assertNotNull($audit->storage_path);
-        $this->assertStringStartsWith('exports/'.$user->id.'/', $audit->storage_path);
-        $this->assertStringEndsWith('.csv', $audit->storage_path);
+        $this->assertSame(
+            sprintf('exports/%d/%d.csv', $user->id, $audit->id),
+            $audit->storage_path,
+        );
         Storage::disk('local')->assertExists($audit->storage_path);
 
         $this->assertNotNull($audit->expires_at);
@@ -197,6 +199,63 @@ class AsyncExportTest extends TestCase
         $this->actingAs($user)
             ->get(route('exports.download', ['token' => $audit->id]))
             ->assertForbidden();
+    }
+
+    public function test_job_retry_writes_to_the_same_deterministic_path(): void
+    {
+        Mail::fake();
+        $user = $this->userWithRestaurant();
+        $audit = $this->seedAudit($user, ExportFormat::Csv, 200);
+
+        $job = new ExportReservationsJob(
+            $audit->id,
+            ExportFormat::Csv,
+            [],
+            $user->id,
+            $user->restaurant_id,
+        );
+
+        $generator = $this->app->make(ExportGenerator::class);
+        $job->handle($generator);
+        $firstPath = $audit->fresh()->storage_path;
+
+        // Simulate a queue retry: the second invocation must
+        // overwrite the same file rather than emit a new one
+        // alongside it (orphans defeat the purge job).
+        $job->handle($generator);
+        $secondPath = $audit->fresh()->storage_path;
+
+        $this->assertSame($firstPath, $secondPath);
+        $files = Storage::disk('local')->allFiles('exports/'.$user->id);
+        $this->assertCount(1, $files);
+    }
+
+    public function test_downloaded_at_is_stamped_only_on_the_first_fetch(): void
+    {
+        $user = $this->userWithRestaurant();
+        $audit = ExportAudit::open($user, ExportFormat::Csv, [], 5);
+        Storage::disk('local')->put('exports/'.$user->id.'/'.$audit->id.'.csv', 'id;name');
+        $audit->forceFill([
+            'storage_path' => 'exports/'.$user->id.'/'.$audit->id.'.csv',
+            'expires_at' => Carbon::now()->addDay(),
+        ])->save();
+
+        $url = URL::temporarySignedRoute(
+            'exports.download',
+            Carbon::now()->addDay(),
+            ['token' => $audit->id],
+        );
+
+        $this->actingAs($user)->get($url)->assertOk();
+        $firstFetchAt = $audit->fresh()->downloaded_at;
+        $this->assertNotNull($firstFetchAt);
+
+        Carbon::setTestNow(Carbon::now()->addMinutes(10));
+
+        $this->actingAs($user)->get($url)->assertOk();
+        // Second click on the same emailed link must NOT overwrite
+        // the first-fetch timestamp — that's the GDPR audit record.
+        $this->assertEquals($firstFetchAt, $audit->fresh()->downloaded_at);
     }
 
     public function test_download_returns_404_when_file_was_already_purged(): void

@@ -53,7 +53,13 @@ final class ExportController extends Controller
             );
         }
 
-        $audit->forceFill(['downloaded_at' => now()])->save();
+        // Stamp the first-fetch timestamp once. The PRD-009 audit
+        // contract is "did the operator pick this link up?" — a
+        // refresh or a second click on the same emailed URL must
+        // not overwrite the first-access record.
+        if ($audit->downloaded_at === null) {
+            $audit->forceFill(['downloaded_at' => now()])->save();
+        }
 
         $filename = basename($path);
         $mimeType = $audit->format->mimeType();
