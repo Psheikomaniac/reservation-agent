@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ExportController;
 use App\Http\Controllers\PublicReservationController;
 use App\Http\Controllers\ReservationMessagesController;
 use App\Http\Controllers\ReservationReplyController;
@@ -21,6 +22,11 @@ Route::get('dashboard', [DashboardController::class, 'index'])
 Route::get('analytics', [AnalyticsController::class, 'index'])
     ->middleware(['auth', 'verified'])
     ->name('analytics.index');
+
+Route::get('exports/download/{token}', [ExportController::class, 'download'])
+    ->whereNumber('token')
+    ->middleware(['auth', 'verified', 'signed'])
+    ->name('exports.download');
 
 Route::get('reservations/{reservation}', [ReservationRequestController::class, 'show'])
     ->whereNumber('reservation')

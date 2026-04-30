@@ -126,6 +126,21 @@ final class CsvExportGenerator implements ExportGenerator
         return $this->renderCsv($restaurant, $filters);
     }
 
+    public function renderBytes(
+        ExportFormat $format,
+        Restaurant $restaurant,
+        array $filters,
+    ): string {
+        if ($format !== ExportFormat::Csv) {
+            throw new InvalidArgumentException(sprintf(
+                'CsvExportGenerator can only emit CSV; got %s.',
+                $format->value,
+            ));
+        }
+
+        return $this->renderCsv($restaurant, $filters);
+    }
+
     /**
      * @param  array<string, mixed>  $filters
      */

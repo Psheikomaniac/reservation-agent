@@ -91,6 +91,21 @@ final class PdfExportGenerator implements ExportGenerator
         return $this->renderPdf($restaurant, $filters);
     }
 
+    public function renderBytes(
+        ExportFormat $format,
+        Restaurant $restaurant,
+        array $filters,
+    ): string {
+        if ($format !== ExportFormat::Pdf) {
+            throw new InvalidArgumentException(sprintf(
+                'PdfExportGenerator can only emit PDF; got %s.',
+                $format->value,
+            ));
+        }
+
+        return $this->renderPdf($restaurant, $filters);
+    }
+
     /**
      * @param  array<string, mixed>  $filters
      */

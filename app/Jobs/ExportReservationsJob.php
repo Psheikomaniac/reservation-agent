@@ -5,27 +5,41 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Enums\ExportFormat;
+use App\Mail\ExportReadyMail;
 use App\Models\ExportAudit;
+use App\Models\Restaurant;
+use App\Models\User;
+use App\Services\Exports\Contracts\ExportGenerator;
 use App\Services\Exports\ExportDispatcher;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
+use RuntimeException;
 
 /**
- * Async export pipeline (PRD-009 § Controller + ExportDispatcher).
+ * Async export pipeline (PRD-009 § Async-Generator).
  *
  * Queued by {@see ExportDispatcher} when
  * the filtered record count exceeds the sync threshold (100).
- * The job runs the heavy CSV / PDF generation, persists the
- * artefact to the storage disk, stamps `storage_path` +
- * `expires_at` on the supplied audit row, and notifies the
- * operator with a signed download URL via `ExportReadyMail`.
+ * The job:
+ *   1. Re-applies tenant isolation manually (the worker has no
+ *      authenticated user, so `RestaurantScope` short-circuits).
+ *   2. Asks the format-routing `ExportGenerator` for the binary
+ *      payload (CSV / PDF) and persists it to
+ *      `storage/app/exports/{user_id}/{filename}` on the local
+ *      disk.
+ *   3. Stamps `storage_path` + `expires_at` (24 h shelf life)
+ *      on the audit row.
+ *   4. Builds a signed `exports.download` URL valid for the same
+ *      24 h and emails it to the operator via {@see ExportReadyMail}.
  *
- * Issue #236 wires the dispatch path; the actual `handle()`
- * implementation lands in sibling issue #239 along with the
- * mail + signed-URL controller.
+ * `PurgeExpiredExportsJob` (#241) deletes the file after
+ * `expires_at`, leaving the audit row intact for GDPR.
  */
 class ExportReservationsJob implements ShouldQueue
 {
@@ -34,16 +48,11 @@ class ExportReservationsJob implements ShouldQueue
     use Queueable;
     use SerializesModels;
 
+    private const int SHELF_LIFE_HOURS = 24;
+
+    private const string DISK = 'local';
+
     /**
-     * `restaurantId` is carried explicitly so the worker can
-     * re-apply tenant isolation: the queue runs without an
-     * authenticated user, which makes `RestaurantScope`
-     * short-circuit and the otherwise-implicit `where
-     * restaurant_id = ?` predicate disappear. The #239 handler
-     * must therefore call `withoutGlobalScope(RestaurantScope::class)`
-     * + `where('restaurant_id', $this->restaurantId)` (same
-     * pattern the analytics aggregator uses).
-     *
      * @param  array<string, mixed>  $filters
      */
     public function __construct(
@@ -54,15 +63,62 @@ class ExportReservationsJob implements ShouldQueue
         public readonly int $restaurantId,
     ) {}
 
-    public function handle(): void
+    public function handle(ExportGenerator $generator): void
     {
-        // Implementation lands in #239 (job + mail + signed URL).
-        // The dispatch path of #236 only needs the constructor +
-        // interface; making `handle()` a no-op here keeps the job
-        // dispatchable end-to-end without producing an artefact
-        // until the next sibling issue fills it in.
-        ExportAudit::query()
-            ->whereKey($this->exportAuditId)
-            ->exists();
+        $audit = ExportAudit::query()->find($this->exportAuditId);
+        if ($audit === null) {
+            // Operator deleted the audit row out from under us
+            // (test fixture cleanup, manual SQL, etc.). Nothing
+            // to deliver — fail silently so the queue doesn't
+            // retry forever.
+            return;
+        }
+
+        $user = User::query()->find($this->userId);
+        $restaurant = Restaurant::query()->find($this->restaurantId);
+        if ($user === null || $restaurant === null) {
+            throw new RuntimeException(sprintf(
+                'ExportReservationsJob #%d cannot resolve user (%d) or restaurant (%d).',
+                $audit->id,
+                $this->userId,
+                $this->restaurantId,
+            ));
+        }
+
+        $payload = $generator->renderBytes($this->format, $restaurant, $this->filters);
+
+        // Deterministic path: a queue retry must not write a
+        // second file. Including the audit id (immutable) and the
+        // format extension is enough to disambiguate; the
+        // PurgeExpiredExportsJob (#241) reads the same path off
+        // the audit row when the artefact's TTL is up.
+        $path = sprintf(
+            'exports/%d/%d.%s',
+            $user->id,
+            $audit->id,
+            $this->format->extension(),
+        );
+
+        Storage::disk(self::DISK)->put($path, $payload);
+
+        $expiresAt = now()->addHours(self::SHELF_LIFE_HOURS);
+
+        $audit->forceFill([
+            'storage_path' => $path,
+            'expires_at' => $expiresAt,
+        ])->save();
+
+        $downloadUrl = URL::temporarySignedRoute(
+            'exports.download',
+            $expiresAt,
+            ['token' => $audit->id],
+        );
+
+        Mail::to($user->email)->send(new ExportReadyMail(
+            downloadUrl: $downloadUrl,
+            format: $this->format,
+            expiresAt: $expiresAt,
+            recordCount: $audit->record_count,
+        ));
     }
 }
