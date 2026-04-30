@@ -5,16 +5,19 @@ declare(strict_types=1);
 namespace App\Services\Analytics;
 
 use App\Enums\AnalyticsRange;
+use App\Enums\MessageDirection;
 use App\Enums\ReservationReplyStatus;
 use App\Enums\ReservationSource;
 use App\Enums\ReservationStatus;
 use App\Enums\SendMode;
 use App\Models\AutoSendAudit;
+use App\Models\ReservationMessage;
 use App\Models\ReservationReply;
 use App\Models\ReservationRequest;
 use App\Models\Restaurant;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -35,7 +38,7 @@ use Illuminate\Support\Facades\DB;
  *
  * Issue #226 wires the totals / by-source / by-status branch;
  * issue #227 adds `responseTime`; issue #228 adds `editRate` and
- * `sendModeStats`. Sibling issues still fill `trends`.
+ * `sendModeStats`; issue #229 adds the three trend series.
  */
 final readonly class AnalyticsAggregator
 {
@@ -60,7 +63,9 @@ final readonly class AnalyticsAggregator
                 responseTime: $this->responseTime($restaurant, $range),
                 editRate: $this->editRate($restaurant, $range),
                 sendModeStats: $this->sendModeStats($restaurant, $range),
-                trends: [],
+                trends: $this->requestsTrend($restaurant, $range),
+                confirmationRateTrend: $this->confirmationRateTrend($restaurant, $range),
+                threadRepliesTrend: $this->threadRepliesTrend($restaurant, $range),
             ),
         );
     }
@@ -335,6 +340,178 @@ final readonly class AnalyticsAggregator
             takeoverRate: $takeoverRate,
             topHardGateReasons: $topHardGateReasons,
         );
+    }
+
+    /**
+     * Requests-per-bucket series, gap-filled. The chart shows total
+     * activity over time; days/hours with zero requests render as
+     * a baseline rather than a hole.
+     *
+     * @return list<TrendBucket>
+     */
+    private function requestsTrend(Restaurant $restaurant, AnalyticsRange $range): array
+    {
+        $timezone = $restaurant->timezone ?? config('app.timezone');
+
+        $counts = $this->baseQuery($restaurant, $range)
+            ->pluck('created_at')
+            ->reduce(function (array $carry, $createdAt) use ($range, $timezone): array {
+                $key = $this->bucketKey($createdAt, $range, $timezone);
+                $carry[$key] = ($carry[$key] ?? 0) + 1;
+
+                return $carry;
+            }, []);
+
+        return $this->fillBuckets(
+            $range,
+            $restaurant,
+            fn (string $key) => (int) ($counts[$key] ?? 0),
+        );
+    }
+
+    /**
+     * Confirmation-rate-per-bucket series. `count` carries the
+     * integer percentage (0-100); buckets with zero requests
+     * surface as 0 — the dashboard masks zero denominators to "—"
+     * in the chart so a flat zero day isn't read as "everyone
+     * declined".
+     *
+     * @return list<TrendBucket>
+     */
+    private function confirmationRateTrend(Restaurant $restaurant, AnalyticsRange $range): array
+    {
+        $timezone = $restaurant->timezone ?? config('app.timezone');
+
+        $rows = $this->baseQuery($restaurant, $range)
+            ->get(['created_at', 'status']);
+
+        $totals = [];
+        $confirmed = [];
+
+        foreach ($rows as $row) {
+            $key = $this->bucketKey($row->created_at, $range, $timezone);
+            $totals[$key] = ($totals[$key] ?? 0) + 1;
+
+            if ($row->status === ReservationStatus::Confirmed) {
+                $confirmed[$key] = ($confirmed[$key] ?? 0) + 1;
+            }
+        }
+
+        return $this->fillBuckets(
+            $range,
+            $restaurant,
+            function (string $key) use ($totals, $confirmed): int {
+                $total = (int) ($totals[$key] ?? 0);
+                if ($total === 0) {
+                    return 0;
+                }
+
+                return (int) round(((int) ($confirmed[$key] ?? 0)) / $total * 100);
+            },
+        );
+    }
+
+    /**
+     * Thread-replies-per-bucket series. PRD-006: counts inbound
+     * `reservation_messages` (`direction = in`) — guest replies that
+     * reopen or extend the conversation. Outbound messages would
+     * just measure how often we sent something and aren't a
+     * meaningful engagement signal.
+     *
+     * @return list<TrendBucket>
+     */
+    private function threadRepliesTrend(Restaurant $restaurant, AnalyticsRange $range): array
+    {
+        $timezone = $restaurant->timezone ?? config('app.timezone');
+
+        $createdAts = ReservationMessage::query()
+            ->where('direction', MessageDirection::In->value)
+            ->whereHas(
+                'reservationRequest',
+                fn (Builder $query) => $query
+                    ->withoutGlobalScopes()
+                    ->where('restaurant_id', $restaurant->id),
+            )
+            ->where('reservation_messages.created_at', '>=', $range->startsAt($timezone))
+            ->where('reservation_messages.created_at', '<=', $range->endsAt($timezone))
+            ->pluck('created_at');
+
+        $counts = [];
+        foreach ($createdAts as $createdAt) {
+            $key = $this->bucketKey($createdAt, $range, $timezone);
+            $counts[$key] = ($counts[$key] ?? 0) + 1;
+        }
+
+        return $this->fillBuckets(
+            $range,
+            $restaurant,
+            fn (string $key) => (int) ($counts[$key] ?? 0),
+        );
+    }
+
+    /**
+     * Map a row timestamp to its bucket key in the restaurant's
+     * local timezone. PHP-side bucketing keeps the queries
+     * database-agnostic — `strftime` (SQLite) and `DATE_FORMAT` /
+     * `HOUR()` (MySQL) have different syntax and the eventual
+     * Postgres choice would force a third dialect. Bucket
+     * cardinality is bounded by `range->bucketCount()`
+     * (≤ 30 days), so the PHP loop is cheap.
+     */
+    private function bucketKey(\DateTimeInterface $createdAt, AnalyticsRange $range, string $timezone): string
+    {
+        $localized = Carbon::instance($createdAt)->setTimezone($timezone);
+
+        return match ($range->bucketSize()) {
+            'hour' => $localized->format('H'),
+            default => $localized->format('Y-m-d'),
+        };
+    }
+
+    /**
+     * Build a complete, ordered bucket list across the range and
+     * fill each bucket's count from the resolver. Days/hours with
+     * no rows still appear in the result so the line chart never
+     * has holes (PRD-008 § Trend-Daten).
+     *
+     * @param  callable(string): int  $countResolver
+     * @return list<TrendBucket>
+     */
+    private function fillBuckets(
+        AnalyticsRange $range,
+        Restaurant $restaurant,
+        callable $countResolver,
+    ): array {
+        $timezone = $restaurant->timezone ?? config('app.timezone');
+        $start = $range->startsAt($timezone);
+        $buckets = [];
+
+        if ($range->bucketSize() === 'hour') {
+            for ($hour = 0; $hour < $range->bucketCount(); $hour++) {
+                $cursor = $start->copy()->addHours($hour);
+                $key = sprintf('%02d', $hour);
+                $label = sprintf('%02d:00', $hour);
+                $buckets[] = new TrendBucket(
+                    label: $label,
+                    bucketStart: $cursor->toIso8601String(),
+                    count: $countResolver($key),
+                );
+            }
+
+            return $buckets;
+        }
+
+        for ($day = 0; $day < $range->bucketCount(); $day++) {
+            $cursor = $start->copy()->addDays($day);
+            $key = $cursor->format('Y-m-d');
+            $buckets[] = new TrendBucket(
+                label: $key,
+                bucketStart: $cursor->toIso8601String(),
+                count: $countResolver($key),
+            );
+        }
+
+        return $buckets;
     }
 
     /**

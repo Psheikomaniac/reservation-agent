@@ -23,7 +23,15 @@ use App\Enums\AnalyticsRange;
  * - `sendModeStats`: PRD-007 breakdown, `null` when the restaurant is
  *   still on the V1.0 manual default and never recorded a non-manual
  *   mode in the window.
- * - `trends`: ordered list of buckets, gap-filled per `range->bucketCount()`.
+ * - `trends`: requests-per-bucket series, gap-filled per
+ *   `range->bucketCount()`. `bucket.count` is the integer request
+ *   count.
+ * - `confirmationRateTrend`: confirmation-rate-per-bucket series,
+ *   same gap-fill. `bucket.count` is the integer percentage (0-100);
+ *   buckets with no requests return 0 (the dashboard masks zero
+ *   denominators as "—" in the chart).
+ * - `threadRepliesTrend`: thread-replies-per-bucket series (PRD-006
+ *   inbound `reservation_messages`), same gap-fill.
  */
 final readonly class AnalyticsSnapshot
 {
@@ -32,6 +40,8 @@ final readonly class AnalyticsSnapshot
      * @param  array<string, int>  $sources
      * @param  array<string, int>  $statusBreakdown
      * @param  list<TrendBucket>  $trends
+     * @param  list<TrendBucket>  $confirmationRateTrend
+     * @param  list<TrendBucket>  $threadRepliesTrend
      */
     public function __construct(
         public AnalyticsRange $range,
@@ -42,5 +52,7 @@ final readonly class AnalyticsSnapshot
         public ?float $editRate,
         public ?SendModeStats $sendModeStats,
         public array $trends,
+        public array $confirmationRateTrend = [],
+        public array $threadRepliesTrend = [],
     ) {}
 }
