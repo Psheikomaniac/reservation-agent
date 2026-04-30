@@ -23,6 +23,10 @@ Route::get('analytics', [AnalyticsController::class, 'index'])
     ->middleware(['auth', 'verified'])
     ->name('analytics.index');
 
+Route::post('exports', [ExportController::class, 'store'])
+    ->middleware(['auth', 'verified'])
+    ->name('exports.store');
+
 Route::get('exports/download/{token}', [ExportController::class, 'download'])
     ->whereNumber('token')
     ->middleware(['auth', 'verified', 'signed'])

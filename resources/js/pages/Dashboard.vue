@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DashboardExportDropdown from '@/components/DashboardExportDropdown.vue';
 import ReservationThreadHistory from '@/components/ReservationThreadHistory.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -512,6 +513,7 @@ usePagePolling(() => router.reload({ only: pollOnly(), preserveScroll: true, pre
                     >
                         In Bearbeitung: <strong>{{ props.stats.in_review }}</strong>
                     </span>
+                    <DashboardExportDropdown :filters="props.filters" />
                 </div>
             </header>
 
