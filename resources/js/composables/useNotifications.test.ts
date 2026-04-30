@@ -183,4 +183,49 @@ describe('useNotifications', () => {
 
         expect(FakeAudio.lastInstance?.src).toBe('/sounds/chime.mp3');
     });
+
+    /**
+     * PRD-010 § Risiken & offene Fragen — "Browser-Block": when the browser
+     * has no Notification API at all (older Safari, embedded webviews, some
+     * test runners), the composable must stay completely silent — every
+     * call has to no-op without throwing — so the digest email becomes the
+     * only delivery channel for the operator. This is the consolidation
+     * gate from issue #252.
+     */
+    it('falls back to digest only when Notification API is undefined', () => {
+        // Wipe both sides of the browser API: notifications and audio
+        // can be missing independently in real environments, but for the
+        // "fallback to digest" path we model the worst case where the
+        // tab has neither.
+        Reflect.deleteProperty(window, 'Notification');
+        Reflect.deleteProperty(window, 'Audio');
+
+        const settings = ref(
+            makeSettings({
+                browser_notifications: true,
+                sound_alerts: true,
+                daily_digest: true, // digest stays the only channel
+            }),
+        );
+
+        const handle = useNotifications(settings);
+
+        // Permission is reported as denied — the settings page uses this
+        // signal to disable the toggle and show the "blocked" hint.
+        expect(handle.permission.value).toBe('denied');
+
+        // Both side-effect functions must no-op silently. If either threw
+        // a "ReferenceError: Notification is not defined" the dashboard
+        // diff trigger would crash on the first poll cycle and the user
+        // would lose every notification path *including* the polling
+        // refresh that drives the row updates.
+        expect(() => handle.notify('hi', { body: 'unused' })).not.toThrow();
+        expect(() => handle.playSound()).not.toThrow();
+
+        expect(NotificationConstructor).not.toHaveBeenCalled();
+        // FakeAudio was deleted — `lastInstance` is whatever the previous
+        // test left it as (null thanks to beforeEach), but the absence of
+        // a constructor call is the assertion that matters.
+        expect(FakeAudio.lastInstance).toBeNull();
+    });
 });
