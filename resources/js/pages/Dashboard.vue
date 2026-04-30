@@ -8,7 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useCountdown } from '@/composables/useCountdown';
+import { useNotifications } from '@/composables/useNotifications';
 import { usePagePolling } from '@/composables/usePagePolling';
+import { useReservationDiffTrigger } from '@/composables/useReservationDiffTrigger';
 import { useRowSelection } from '@/composables/useRowSelection';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { formatDateTime } from '@/lib/format-datetime';
@@ -17,6 +19,7 @@ import {
     type BreadcrumbItem,
     type DashboardFilters,
     type DashboardStats,
+    type NotificationSettings,
     type PaginatedReservationRequests,
     type ReservationRequestDetail,
     type ReservationSource,
@@ -456,6 +459,15 @@ function pollOnly(): string[] {
 }
 
 usePagePolling(() => router.reload({ only: pollOnly(), preserveScroll: true, preserveState: true }), POLL_MS);
+
+// PRD-010 § Trigger im Dashboard. Hooks the polling-driven row updates
+// into a notification + sound trigger. The composable refuses to fire
+// on the initial page load and on filter changes — see its docblock.
+const liveNotificationSettings = computed<NotificationSettings>(() => page.props.auth.user.notification_settings);
+const notifications = useNotifications(liveNotificationSettings);
+const dashboardRowIds = computed<readonly number[]>(() => props.requests.data.map((row) => row.id));
+const dashboardFilters = computed<DashboardFilters>(() => props.filters);
+useReservationDiffTrigger(dashboardRowIds, dashboardFilters, notifications);
 </script>
 
 <template>

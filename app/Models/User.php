@@ -42,6 +42,18 @@ class User extends Authenticatable
     ];
 
     /**
+     * Accessors that should always appear in the array / JSON shape.
+     * `notification_settings` is read by the dashboard composable
+     * (PRD-010 #248) and the settings page; both require the merged
+     * shape, not the raw column.
+     *
+     * @var list<string>
+     */
+    protected $appends = [
+        'notification_settings',
+    ];
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>

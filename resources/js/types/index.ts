@@ -47,6 +47,7 @@ export interface User {
     email_verified_at: string | null;
     restaurant_id: number | null;
     role: UserRole;
+    notification_settings: NotificationSettings;
     created_at: string;
     updated_at: string;
 }
