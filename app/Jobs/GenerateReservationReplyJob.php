@@ -82,7 +82,7 @@ class GenerateReservationReplyJob implements ShouldQueue
                 'reservation_request_id' => $request->id,
                 'status' => ReservationReplyStatus::Draft,
                 'body' => $body,
-                'ai_prompt_snapshot' => $context,
+                'ai_prompt_snapshot' => $this->buildSnapshot($context, $body, isFallback: false),
             ]);
 
             $this->applyAutoSendDecision($reply);
@@ -134,11 +134,44 @@ class GenerateReservationReplyJob implements ShouldQueue
             'reservation_request_id' => $request->id,
             'status' => ReservationReplyStatus::Draft,
             'body' => OpenAiReplyGenerator::FALLBACK_TEXT,
-            'ai_prompt_snapshot' => $context,
+            'ai_prompt_snapshot' => $this->buildSnapshot($context, OpenAiReplyGenerator::FALLBACK_TEXT, isFallback: true),
             'is_fallback' => true,
         ]);
 
         $this->applyAutoSendDecision($reply);
+    }
+
+    /**
+     * The `ai_prompt_snapshot` carries the deterministic context the
+     * builder produced, plus three meta fields that PRD-008 analytics
+     * (edit-rate, shadow takeover-rate, model-drift) read after the
+     * fact:
+     *
+     *   - `original_body`: the AI's *original* draft, before any
+     *     operator edit. Comparing it against the persisted `body`
+     *     reveals the edit-rate.
+     *   - `model`: which OpenAI model produced the draft, so model
+     *     swaps don't pollute the analytics.
+     *   - `fallback`: whether the body is the neutral fallback text
+     *     (401 / 429 / 5xx / timeout). Mirrors the `is_fallback`
+     *     column for consumers that only see the snapshot.
+     *
+     * Backwards-compatible with PRD-005 consumers: the context fields
+     * stay at the top level (e.g. `ai_prompt_snapshot['request']`),
+     * the new keys are siblings. Replies created before this change
+     * have no `original_body` and PRD-008 treats them as `not modified`
+     * (documented in the analytics PRD risks section).
+     *
+     * @param  array<string, mixed>|null  $context
+     * @return array<string, mixed>
+     */
+    private function buildSnapshot(?array $context, string $originalBody, bool $isFallback): array
+    {
+        return ($context ?? []) + [
+            'original_body' => $originalBody,
+            'model' => (string) config('reservations.ai.openai_model', 'gpt-4o-mini'),
+            'fallback' => $isFallback,
+        ];
     }
 
     /**
