@@ -4,6 +4,13 @@ declare module 'ziggy-js' {
     "home": [],
     "dashboard": [],
     "analytics.index": [],
+    "exports.store": [],
+    "exports.download": [
+        {
+            "name": "token",
+            "required": true
+        }
+    ],
     "reservations.show": [
         {
             "name": "reservation",

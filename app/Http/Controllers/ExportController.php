@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Exports\ExportRequest;
 use App\Models\ExportAudit;
+use App\Services\Exports\ExportDispatcher;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -27,6 +30,29 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  */
 final class ExportController extends Controller
 {
+    /**
+     * Operator-triggered export. Sync path (≤ 100 records) returns
+     * a `StreamedResponse` the browser downloads directly; async
+     * path (> 100) queues `ExportReservationsJob` and returns a
+     * `RedirectResponse` carrying the flash message the dashboard
+     * surfaces. Tenant guard is here (not in the FormRequest) so
+     * the same convention as `AnalyticsController` applies — a
+     * tenantless user → 404, not 403.
+     */
+    public function store(ExportRequest $request, ExportDispatcher $dispatcher): StreamedResponse|RedirectResponse
+    {
+        $user = $request->user();
+        if ($user === null || $user->restaurant_id === null) {
+            throw new NotFoundHttpException;
+        }
+
+        return $dispatcher->dispatch(
+            $request->exportFormat(),
+            $request->filterSnapshot(),
+            $user,
+        );
+    }
+
     public function download(Request $request, int $token): StreamedResponse
     {
         $audit = ExportAudit::query()->find($token);
