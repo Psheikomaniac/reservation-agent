@@ -13,10 +13,11 @@ import { watch, type Ref } from 'vue';
  *
  * Two intentional silences:
  *
- * 1. **First load.** `previousIds.size === 0` after mount means we have
- *    nothing to diff against — populate the snapshot and stay quiet.
- *    Without this guard every fresh dashboard tab would shout
- *    "Neue Reservierungsanfrage" for every row already on screen.
+ * 1. **First load.** A `hasBaseline` flag — *not* `previousIds.size === 0` —
+ *    delineates the very first watcher invocation from any later one.
+ *    The size-based check would silence the first reservation that
+ *    ever arrives on a dashboard that started empty, exactly the
+ *    scenario the operator most needs to hear about.
  *
  * 2. **Filter change.** A status/source/date filter switch produces
  *    a different ID set, but those rows are not "new" — they were
@@ -35,23 +36,31 @@ export function useReservationDiffTrigger(
 ): void {
     const previousIds = new Set<number>();
     let previousFilterKey: string | null = null;
+    // Explicit baseline flag instead of `previousIds.size === 0`.
+    // The dashboard regularly starts empty (a brand-new restaurant
+    // or an aggressive filter), and `Set.size` would lie about
+    // "first load" again on every subsequent empty-or-near-empty
+    // poll — silencing the first reservation that ever arrives.
+    let hasBaseline = false;
 
     watch(
         // Watch a stable string of ids so polling that returns the
-        // *same* ids doesn't fire a no-op diff over and over.
+        // *same* ids doesn't re-execute the diff. Filter-only
+        // changes that produce identical id sets fall through to the
+        // next genuine row change, which still detects the stale
+        // filter snapshot and resets the baseline silently.
         () => rowIds.value.join(','),
         () => {
             const currentIds = new Set(rowIds.value);
             const filterKey = serializeFilters(filters.value);
 
-            const isFirstLoad = previousIds.size === 0;
             // Treat filter changes as a snapshot reset, never as a
             // notification trigger. The `previousFilterKey === null`
             // guard makes the very first poll behave the same way:
             // populate the baseline silently.
             const filtersChanged = previousFilterKey !== null && previousFilterKey !== filterKey;
 
-            if (!isFirstLoad && !filtersChanged) {
+            if (hasBaseline && !filtersChanged) {
                 const newIds: number[] = [];
                 for (const id of currentIds) {
                     if (!previousIds.has(id)) {
@@ -72,6 +81,7 @@ export function useReservationDiffTrigger(
                 previousIds.add(id);
             }
             previousFilterKey = filterKey;
+            hasBaseline = true;
         },
         { immediate: true },
     );

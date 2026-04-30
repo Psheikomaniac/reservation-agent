@@ -112,6 +112,29 @@ describe('useReservationDiffTrigger', () => {
         });
     });
 
+    it('notifies when the very first reservation arrives on an empty dashboard', async () => {
+        // Regression: an earlier `previousIds.size === 0` check treated
+        // the second watcher fire as another "first load" if the page
+        // started empty, swallowing the most important alert.
+        rowIds.value = [];
+        useReservationDiffTrigger(
+            rowIds as unknown as Parameters<typeof useReservationDiffTrigger>[0],
+            filters as unknown as Parameters<typeof useReservationDiffTrigger>[1],
+            handle,
+        );
+        await nextTick();
+
+        rowIds.value = [42];
+        await nextTick();
+
+        expect(handle._notify).toHaveBeenCalledTimes(1);
+        expect(handle._notify).toHaveBeenCalledWith('Neue Reservierungsanfrage', {
+            body: '1 neue Anfrage – jetzt anschauen',
+            tag: 'reservation-agent-new-request',
+        });
+        expect(handle._play).toHaveBeenCalledTimes(1);
+    });
+
     it('does not notify when the same ids are polled again (no diff)', async () => {
         rowIds.value = [1, 2, 3];
         useReservationDiffTrigger(
