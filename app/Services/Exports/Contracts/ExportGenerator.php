@@ -30,4 +30,18 @@ interface ExportGenerator
         Restaurant $restaurant,
         array $filters,
     ): StreamedResponse;
+
+    /**
+     * Render the export as a binary string. Used by the async
+     * pipeline (`ExportReservationsJob`) — the job decides
+     * which disk + path to persist to, the generator only
+     * concerns itself with producing the bytes.
+     *
+     * @param  array<string, mixed>  $filters
+     */
+    public function renderBytes(
+        ExportFormat $format,
+        Restaurant $restaurant,
+        array $filters,
+    ): string;
 }
