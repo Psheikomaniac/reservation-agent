@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Jobs\FetchReservationEmailsJob;
 use App\Jobs\PruneFailedEmailImportsJob;
+use App\Jobs\PurgeExpiredExportsJob;
 use App\Models\Restaurant;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -25,4 +26,9 @@ Schedule::call(function (): void {
 Schedule::job(new PruneFailedEmailImportsJob)
     ->name(PruneFailedEmailImportsJob::class)
     ->dailyAt('03:00')
+    ->withoutOverlapping();
+
+Schedule::job(new PurgeExpiredExportsJob)
+    ->name(PurgeExpiredExportsJob::class)
+    ->everySixHours()
     ->withoutOverlapping();
