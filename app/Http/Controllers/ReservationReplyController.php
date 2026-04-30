@@ -27,20 +27,65 @@ class ReservationReplyController extends Controller
             return back()->with('error', 'Diese Antwort wurde bereits freigegeben.');
         }
 
+        // Promotion path from `shadow` → `approved` (PRD-007 issue
+        // #221): capturing whether the operator changed the AI text
+        // before sending feeds the takeover-rate stat exposed by
+        // PRD-008. Strict trimmed comparison so a whitespace-only
+        // diff is not counted as a real edit.
+        $wasShadow = $reply->status === ReservationReplyStatus::Shadow;
         $editedBody = $request->string('body')->trim()->toString();
-        if ($editedBody !== '' && $editedBody !== $reply->body) {
+        $bodyChanged = $editedBody !== '' && $editedBody !== trim($reply->body);
+
+        if ($bodyChanged) {
             $reply->body = $editedBody;
         }
 
-        $reply->forceFill([
+        $payload = [
             'status' => ReservationReplyStatus::Approved,
             'approved_by' => Auth::id(),
             'approved_at' => now(),
-        ])->save();
+        ];
+
+        if ($wasShadow) {
+            $payload['shadow_was_modified'] = $bodyChanged;
+            // The operator demonstrably reviewed the draft when they
+            // hit Approve; mark it compared if the side-effect
+            // endpoint hasn't already done so.
+            if ($reply->shadow_compared_at === null) {
+                $payload['shadow_compared_at'] = now();
+            }
+        }
+
+        $reply->forceFill($payload)->save();
 
         SendReservationReplyJob::dispatch($reply->id);
 
         return back()->with('success', 'Antwort freigegeben — sie wird gleich versendet.');
+    }
+
+    /**
+     * Mark a shadow reply as "the operator has reviewed this" so the
+     * PRD-008 takeover-rate denominator (`shadow_compared_at IS NOT
+     * NULL`) counts it. Idempotent: re-opening the drawer must not
+     * overwrite the timestamp; the front-end relies on
+     * `shadow_compared_at` being set the moment the operator first
+     * looked at the draft. Only applies to replies whose current
+     * status is still `shadow` — once promoted to `approved`, the
+     * approve flow itself sets the timestamp.
+     */
+    public function markShadowCompared(ReservationReply $reply): RedirectResponse
+    {
+        if ($reply->status !== ReservationReplyStatus::Shadow) {
+            return back();
+        }
+
+        if ($reply->shadow_compared_at !== null) {
+            return back();
+        }
+
+        $reply->forceFill(['shadow_compared_at' => now()])->save();
+
+        return back();
     }
 
     /**

@@ -6,6 +6,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useCountdown } from '@/composables/useCountdown';
 import { usePagePolling } from '@/composables/usePagePolling';
 import { useRowSelection } from '@/composables/useRowSelection';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -260,18 +261,24 @@ function selectDrawerTab(tab: DrawerTab): void {
     }
 }
 
-const REPLY_STATUS_LABEL: Record<'draft' | 'approved' | 'sent' | 'failed', string> = {
+const REPLY_STATUS_LABEL: Partial<Record<NonNullable<ReservationRequestDetail['latest_reply']>['status'], string>> = {
     draft: 'KI-Vorschlag verfügbar',
     approved: 'Wird versendet',
     sent: 'Versendet',
     failed: 'Versand fehlgeschlagen',
+    shadow: 'Schatten-Modus — nicht versendet',
+    scheduled_auto_send: 'Auto-Versand vorgemerkt',
+    cancelled_auto: 'Auto-Versand abgebrochen',
 };
 
-const REPLY_STATUS_BADGE: Record<'draft' | 'approved' | 'sent' | 'failed', string> = {
+const REPLY_STATUS_BADGE: Partial<Record<NonNullable<ReservationRequestDetail['latest_reply']>['status'], string>> = {
     draft: 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200',
     approved: 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-200',
     sent: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200',
     failed: 'bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-200',
+    shadow: 'bg-yellow-100 text-yellow-900 dark:bg-yellow-900/40 dark:text-yellow-200',
+    scheduled_auto_send: 'bg-orange-100 text-orange-900 dark:bg-orange-900/40 dark:text-orange-200',
+    cancelled_auto: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200',
 };
 
 const replyBody = ref('');
@@ -294,8 +301,20 @@ const currentReplyId = computed(() => props.selectedRequest?.latest_reply?.id ??
 
 const isReplyEditable = computed(() => {
     const reply = props.selectedRequest?.latest_reply;
-    return reply !== null && reply !== undefined && reply.status === 'draft';
+    if (reply === null || reply === undefined) {
+        return false;
+    }
+    // Shadow drafts are also editable: the operator promotes them
+    // to manual send via the same approve flow (PRD-007 #221).
+    return reply.status === 'draft' || reply.status === 'shadow';
 });
+
+const isShadowReply = computed(() => props.selectedRequest?.latest_reply?.status === 'shadow');
+const isScheduledAutoSend = computed(() => props.selectedRequest?.latest_reply?.status === 'scheduled_auto_send');
+
+const autoSendDeadline = computed(() => props.selectedRequest?.latest_reply?.auto_send_scheduled_for ?? null);
+const autoSendCountdown = useCountdown(autoSendDeadline);
+const cancellingAutoSend = ref(false);
 
 const isEdited = computed(() => {
     const reply = props.selectedRequest?.latest_reply;
@@ -334,7 +353,7 @@ watch(
 
 function submitApproval(): void {
     const reply = props.selectedRequest?.latest_reply;
-    if (!reply || reply.status !== 'draft') {
+    if (!reply || (reply.status !== 'draft' && reply.status !== 'shadow')) {
         return;
     }
 
@@ -360,6 +379,50 @@ function submitApproval(): void {
         },
     });
 }
+
+function cancelAutoSend(): void {
+    const reply = props.selectedRequest?.latest_reply;
+    if (!reply || reply.status !== 'scheduled_auto_send') {
+        return;
+    }
+
+    cancellingAutoSend.value = true;
+    router.post(
+        route('reservation-replies.cancel-auto-send', { reply: reply.id }),
+        {},
+        {
+            preserveScroll: true,
+            onFinish: () => {
+                cancellingAutoSend.value = false;
+            },
+        },
+    );
+}
+
+// Mark a shadow reply as compared the moment the operator first
+// looks at it (PRD-008 takeover-rate denominator). Idempotent on
+// the server: the endpoint is a no-op once `shadow_compared_at`
+// is already set, so re-opens after polling don't write again.
+const markedAsShadowCompared = ref<Set<number>>(new Set());
+
+watch(
+    () => props.selectedRequest?.latest_reply,
+    (reply) => {
+        if (!reply || reply.status !== 'shadow' || reply.shadow_compared_at !== null) {
+            return;
+        }
+        if (markedAsShadowCompared.value.has(reply.id)) {
+            return;
+        }
+        markedAsShadowCompared.value.add(reply.id);
+        router.post(
+            route('reservation-replies.mark-shadow-compared', { reply: reply.id }),
+            {},
+            { preserveScroll: true, preserveState: true, only: ['selectedRequest'] },
+        );
+    },
+    { immediate: true },
+);
 
 const selection = useRowSelection();
 const visibleRowIds = computed(() => props.requests.data.map((row) => row.id));
@@ -784,6 +847,42 @@ usePagePolling(() => router.reload({ only: pollOnly(), preserveScroll: true, pre
                             </span>
                         </div>
 
+                        <div
+                            v-if="isShadowReply"
+                            class="rounded-md border border-yellow-300 bg-yellow-50 p-3 text-xs text-yellow-900 dark:border-yellow-800 dark:bg-yellow-950/40 dark:text-yellow-200"
+                            data-testid="ai-reply-shadow-banner"
+                        >
+                            <p class="font-medium">Schatten-Modus — diese Antwort wurde <strong>nicht</strong> versendet.</p>
+                            <p v-if="props.selectedRequest.latest_reply.auto_send_scheduled_for" class="mt-1">
+                                Hätte automatisch versendet werden sollen am
+                                {{ renderTime(props.selectedRequest.latest_reply.auto_send_scheduled_for) }}.
+                            </p>
+                            <p v-else class="mt-1">Du kannst den KI-Text bearbeiten und manuell freigeben — Auswertung läuft im Hintergrund.</p>
+                        </div>
+
+                        <div
+                            v-if="isScheduledAutoSend"
+                            class="rounded-md border border-orange-300 bg-orange-50 p-3 text-xs text-orange-900 dark:border-orange-800 dark:bg-orange-950/40 dark:text-orange-200"
+                            data-testid="ai-reply-scheduled-banner"
+                        >
+                            <p class="font-medium">
+                                <span v-if="autoSendCountdown.secondsLeft.value > 0">
+                                    Wird automatisch versendet in {{ autoSendCountdown.secondsLeft.value }} s.
+                                </span>
+                                <span v-else>Auto-Versand wird gerade ausgelöst …</span>
+                            </p>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                class="mt-2"
+                                :disabled="cancellingAutoSend || autoSendCountdown.isExpired.value"
+                                data-testid="ai-reply-cancel-auto-send"
+                                @click="cancelAutoSend"
+                            >
+                                Versand abbrechen
+                            </Button>
+                        </div>
+
                         <textarea
                             v-model="replyBody"
                             :disabled="!isReplyEditable"
@@ -838,7 +937,12 @@ usePagePolling(() => router.reload({ only: pollOnly(), preserveScroll: true, pre
                         </p>
 
                         <Button v-if="isReplyEditable" :disabled="approving" class="w-full" data-testid="ai-reply-approve" @click="submitApproval">
-                            {{ isEdited ? 'Bearbeitete Version senden' : 'Freigeben & Versenden' }}
+                            <template v-if="isShadowReply">
+                                {{ isEdited ? 'Bearbeitete Version manuell senden' : 'Doch manuell freigeben & versenden' }}
+                            </template>
+                            <template v-else>
+                                {{ isEdited ? 'Bearbeitete Version senden' : 'Freigeben & Versenden' }}
+                            </template>
                         </Button>
                     </section>
                 </template>
