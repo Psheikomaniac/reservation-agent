@@ -1,0 +1,10 @@
+From: Anna Müller <anna.mueller@example.com>
+To: reservierung@restaurant.example
+Subject: Re: [Res #1] Frage zur Reservierung
+Date: Wed, 29 Apr 2026 18:40:00 +0200
+Message-ID: <inbound-reply-marker-001@example.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Mein Mailclient verwirft Threading-Header, aber der Subject-Marker bleibt.

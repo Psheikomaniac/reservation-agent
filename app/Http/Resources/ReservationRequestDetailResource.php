@@ -67,6 +67,16 @@ final class ReservationRequestDetailResource extends JsonResource
             'approved_at' => $reply->approved_at?->toISOString(),
             'sent_at' => $reply->sent_at?->toISOString(),
             'error_message' => $reply->error_message,
+            // PRD-007 detail-drawer hooks (issue #221):
+            //   - `auto_send_scheduled_for` powers the cancel-window
+            //     countdown for `scheduled_auto_send` replies.
+            //   - `shadow_compared_at` lets the drawer skip the
+            //     "mark as compared" round-trip on subsequent opens.
+            //   - `send_mode_at_creation` so the operator sees which
+            //     mode was active when the draft landed.
+            'auto_send_scheduled_for' => $reply->auto_send_scheduled_for?->toISOString(),
+            'shadow_compared_at' => $reply->shadow_compared_at?->toISOString(),
+            'send_mode_at_creation' => $reply->send_mode_at_creation?->value,
         ];
     }
 }

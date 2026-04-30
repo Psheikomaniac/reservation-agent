@@ -1,0 +1,13 @@
+From: Anna Müller <anna.mueller@example.com>
+To: reservierung@restaurant.example
+Subject: Re: Reservierung bei Le Bistro [Res #1]
+Date: Wed, 29 Apr 2026 18:35:00 +0200
+Message-ID: <inbound-reply-refs-001@example.com>
+In-Reply-To: <unknown-deadbeef@somewhere.example>
+References: <root-of-thread@example.com> <outbound-thread-id-001@restaurant.example> <unrelated@example.org>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Mein Mailclient hat die In-Reply-To-Kette verloren, aber der References-Header
+sollte noch reichen, um die Reservierung wiederzufinden.

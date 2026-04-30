@@ -1,0 +1,11 @@
+From: Stranger <stranger@example.com>
+To: reservierung@restaurant.example
+Subject: Anfrage zur Speisekarte
+Date: Wed, 29 Apr 2026 18:55:00 +0200
+Message-ID: <inbound-no-match-001@example.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Hallo, ich hätte gerne ein paar Informationen zu Ihrer Speisekarte. Das
+ist keine Reservierungsanfrage und sollte keinen bestehenden Thread treffen.

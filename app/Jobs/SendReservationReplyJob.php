@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Enums\MessageDirection;
 use App\Enums\ReservationReplyStatus;
 use App\Enums\ReservationStatus;
 use App\Mail\ReservationReplyMail;
+use App\Models\ReservationMessage;
 use App\Models\ReservationReply;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -73,11 +75,32 @@ final class SendReservationReplyJob implements ShouldQueue
         }
 
         try {
-            Mail::to($email)->send(new ReservationReplyMail($reply));
+            $mail = new ReservationReplyMail($reply);
+
+            Mail::to($email)->send($mail);
+
+            $fromAddress = (string) (config('mail.from.address') ?: 'noreply@localhost');
+            $subject = (string) $mail->envelope()->subject;
+
+            ReservationMessage::create([
+                'reservation_request_id' => $reply->reservation_request_id,
+                'direction' => MessageDirection::Out,
+                'message_id' => $mail->messageId,
+                'subject' => $subject,
+                'from_address' => $fromAddress,
+                'to_address' => $email,
+                'body_plain' => $reply->body,
+                // Outbound mails don't carry raw IMAP headers — synthesize a
+                // minimal RFC-2822-style envelope from what we authored, so
+                // the audit + drawer-history queries have something to render.
+                'raw_headers' => "Message-ID: <{$mail->messageId}>\nFrom: {$fromAddress}\nTo: {$email}\nSubject: {$subject}",
+                'sent_at' => now(),
+            ]);
 
             $reply->forceFill([
                 'status' => ReservationReplyStatus::Sent,
                 'sent_at' => now(),
+                'outbound_message_id' => $mail->messageId,
                 'error_message' => null,
             ])->save();
 

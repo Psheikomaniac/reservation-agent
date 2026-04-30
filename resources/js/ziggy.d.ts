@@ -3,7 +3,21 @@ declare module 'ziggy-js' {
   interface RouteList {
     "home": [],
     "dashboard": [],
+    "analytics.index": [],
+    "exports.store": [],
+    "exports.download": [
+        {
+            "name": "token",
+            "required": true
+        }
+    ],
     "reservations.show": [
+        {
+            "name": "reservation",
+            "required": true
+        }
+    ],
+    "reservations.messages.index": [
         {
             "name": "reservation",
             "required": true
@@ -13,6 +27,27 @@ declare module 'ziggy-js' {
     "reservation-replies.approve": [
         {
             "name": "reply",
+            "required": true,
+            "binding": "id"
+        }
+    ],
+    "reservation-replies.cancel-auto-send": [
+        {
+            "name": "reply",
+            "required": true,
+            "binding": "id"
+        }
+    ],
+    "reservation-replies.mark-shadow-compared": [
+        {
+            "name": "reply",
+            "required": true,
+            "binding": "id"
+        }
+    ],
+    "restaurants.send-mode.killswitch": [
+        {
+            "name": "restaurant",
             "required": true,
             "binding": "id"
         }
@@ -44,6 +79,10 @@ declare module 'ziggy-js' {
     "password.edit": [],
     "password.update": [],
     "appearance": [],
+    "settings.send-mode.edit": [],
+    "settings.send-mode.update": [],
+    "settings.notifications.edit": [],
+    "settings.notifications.update": [],
     "register": [],
     "login": [],
     "password.request": [],

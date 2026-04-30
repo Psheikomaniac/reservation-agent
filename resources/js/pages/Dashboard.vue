@@ -1,11 +1,16 @@
 <script setup lang="ts">
+import DashboardExportDropdown from '@/components/DashboardExportDropdown.vue';
+import ReservationThreadHistory from '@/components/ReservationThreadHistory.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useCountdown } from '@/composables/useCountdown';
+import { useNotifications } from '@/composables/useNotifications';
 import { usePagePolling } from '@/composables/usePagePolling';
+import { useReservationDiffTrigger } from '@/composables/useReservationDiffTrigger';
 import { useRowSelection } from '@/composables/useRowSelection';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { formatDateTime } from '@/lib/format-datetime';
@@ -14,11 +19,13 @@ import {
     type BreadcrumbItem,
     type DashboardFilters,
     type DashboardStats,
+    type NotificationSettings,
     type PaginatedReservationRequests,
     type ReservationRequestDetail,
     type ReservationSource,
     type ReservationStatus,
     type SharedData,
+    type ThreadMessage,
 } from '@/types';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { ChevronDown, Info } from 'lucide-vue-next';
@@ -31,7 +38,9 @@ interface DashboardProps {
     requests: PaginatedReservationRequests;
     stats: DashboardStats;
     selectedRequest?: ReservationRequestDetail | null;
+    threadMessages?: ThreadMessage[] | null;
     openaiKeyRejectedAt?: string | null;
+    sendMode?: 'manual' | 'shadow' | 'auto' | null;
 }
 
 const props = defineProps<DashboardProps>();
@@ -41,6 +50,28 @@ const breadcrumbs: BreadcrumbItem[] = [{ title: 'Dashboard', href: '/dashboard' 
 const page = usePage<SharedData>();
 const restaurantName = computed(() => page.props.restaurant?.name ?? '');
 const restaurantTimezone = computed(() => page.props.restaurant?.timezone);
+
+// PRD-007 mode banner. Shows yellow for shadow (test mode, no risk to
+// guests yet) and red for auto (mail flows without operator approval),
+// so the operator always knows what their dashboard is wired up to do
+// and where the killswitch lives.
+const sendModeBanner = computed(() => {
+    if (props.sendMode === 'shadow') {
+        return {
+            kind: 'shadow' as const,
+            title: 'Shadow-Modus aktiv',
+            body: 'KI-Antworten werden generiert und als „wäre versendet worden" markiert, gehen aber NICHT an Gäste.',
+        };
+    }
+    if (props.sendMode === 'auto') {
+        return {
+            kind: 'auto' as const,
+            title: 'Automatischer Versand aktiv',
+            body: 'KI-Antworten gehen 60 Sekunden nach Generierung automatisch an Gäste, sofern keine Sicherheitsregel greift.',
+        };
+    }
+    return null;
+});
 
 const STATUS_OPTIONS: { value: ReservationStatus; label: string }[] = [
     { value: 'new', label: 'Neu' },
@@ -196,18 +227,62 @@ const drawerOpen = computed({
 
 const rawEmailOpen = ref(false);
 
-const REPLY_STATUS_LABEL: Record<'draft' | 'approved' | 'sent' | 'failed', string> = {
+type DrawerTab = 'details' | 'history';
+const activeDrawerTab = ref<DrawerTab>('details');
+const threadMessagesLoading = ref(false);
+
+watch(
+    () => props.selectedRequest?.id,
+    (id, prev) => {
+        if (id !== prev) {
+            // Reset to Details when the selection changes so the operator
+            // doesn't land on a stale History tab from a previous request.
+            activeDrawerTab.value = 'details';
+        }
+    },
+);
+
+function selectDrawerTab(tab: DrawerTab): void {
+    if (activeDrawerTab.value === tab) {
+        return;
+    }
+    activeDrawerTab.value = tab;
+
+    // History data is loaded lazily on first activation per drawer-open
+    // cycle. Repeating the partial reload on every tab switch would burn
+    // a server roundtrip for unchanged data; the page polling refresh
+    // already covers steady-state updates.
+    if (tab === 'history' && props.selectedRequest != null && props.threadMessages == null) {
+        threadMessagesLoading.value = true;
+        router.reload({
+            only: ['threadMessages'],
+            preserveScroll: true,
+            preserveState: true,
+            onFinish: () => {
+                threadMessagesLoading.value = false;
+            },
+        });
+    }
+}
+
+const REPLY_STATUS_LABEL: Partial<Record<NonNullable<ReservationRequestDetail['latest_reply']>['status'], string>> = {
     draft: 'KI-Vorschlag verfügbar',
     approved: 'Wird versendet',
     sent: 'Versendet',
     failed: 'Versand fehlgeschlagen',
+    shadow: 'Schatten-Modus — nicht versendet',
+    scheduled_auto_send: 'Auto-Versand vorgemerkt',
+    cancelled_auto: 'Auto-Versand abgebrochen',
 };
 
-const REPLY_STATUS_BADGE: Record<'draft' | 'approved' | 'sent' | 'failed', string> = {
+const REPLY_STATUS_BADGE: Partial<Record<NonNullable<ReservationRequestDetail['latest_reply']>['status'], string>> = {
     draft: 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200',
     approved: 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-200',
     sent: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200',
     failed: 'bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-200',
+    shadow: 'bg-yellow-100 text-yellow-900 dark:bg-yellow-900/40 dark:text-yellow-200',
+    scheduled_auto_send: 'bg-orange-100 text-orange-900 dark:bg-orange-900/40 dark:text-orange-200',
+    cancelled_auto: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200',
 };
 
 const replyBody = ref('');
@@ -230,8 +305,20 @@ const currentReplyId = computed(() => props.selectedRequest?.latest_reply?.id ??
 
 const isReplyEditable = computed(() => {
     const reply = props.selectedRequest?.latest_reply;
-    return reply !== null && reply !== undefined && reply.status === 'draft';
+    if (reply === null || reply === undefined) {
+        return false;
+    }
+    // Shadow drafts are also editable: the operator promotes them
+    // to manual send via the same approve flow (PRD-007 #221).
+    return reply.status === 'draft' || reply.status === 'shadow';
 });
+
+const isShadowReply = computed(() => props.selectedRequest?.latest_reply?.status === 'shadow');
+const isScheduledAutoSend = computed(() => props.selectedRequest?.latest_reply?.status === 'scheduled_auto_send');
+
+const autoSendDeadline = computed(() => props.selectedRequest?.latest_reply?.auto_send_scheduled_for ?? null);
+const autoSendCountdown = useCountdown(autoSendDeadline);
+const cancellingAutoSend = ref(false);
 
 const isEdited = computed(() => {
     const reply = props.selectedRequest?.latest_reply;
@@ -270,7 +357,7 @@ watch(
 
 function submitApproval(): void {
     const reply = props.selectedRequest?.latest_reply;
-    if (!reply || reply.status !== 'draft') {
+    if (!reply || (reply.status !== 'draft' && reply.status !== 'shadow')) {
         return;
     }
 
@@ -296,6 +383,50 @@ function submitApproval(): void {
         },
     });
 }
+
+function cancelAutoSend(): void {
+    const reply = props.selectedRequest?.latest_reply;
+    if (!reply || reply.status !== 'scheduled_auto_send') {
+        return;
+    }
+
+    cancellingAutoSend.value = true;
+    router.post(
+        route('reservation-replies.cancel-auto-send', { reply: reply.id }),
+        {},
+        {
+            preserveScroll: true,
+            onFinish: () => {
+                cancellingAutoSend.value = false;
+            },
+        },
+    );
+}
+
+// Mark a shadow reply as compared the moment the operator first
+// looks at it (PRD-008 takeover-rate denominator). Idempotent on
+// the server: the endpoint is a no-op once `shadow_compared_at`
+// is already set, so re-opens after polling don't write again.
+const markedAsShadowCompared = ref<Set<number>>(new Set());
+
+watch(
+    () => props.selectedRequest?.latest_reply,
+    (reply) => {
+        if (!reply || reply.status !== 'shadow' || reply.shadow_compared_at !== null) {
+            return;
+        }
+        if (markedAsShadowCompared.value.has(reply.id)) {
+            return;
+        }
+        markedAsShadowCompared.value.add(reply.id);
+        router.post(
+            route('reservation-replies.mark-shadow-compared', { reply: reply.id }),
+            {},
+            { preserveScroll: true, preserveState: true, only: ['selectedRequest'] },
+        );
+    },
+    { immediate: true },
+);
 
 const selection = useRowSelection();
 const visibleRowIds = computed(() => props.requests.data.map((row) => row.id));
@@ -328,6 +459,15 @@ function pollOnly(): string[] {
 }
 
 usePagePolling(() => router.reload({ only: pollOnly(), preserveScroll: true, preserveState: true }), POLL_MS);
+
+// PRD-010 § Trigger im Dashboard. Hooks the polling-driven row updates
+// into a notification + sound trigger. The composable refuses to fire
+// on the initial page load and on filter changes — see its docblock.
+const liveNotificationSettings = computed<NotificationSettings>(() => page.props.auth.user.notification_settings);
+const notifications = useNotifications(liveNotificationSettings);
+const dashboardRowIds = computed<readonly number[]>(() => props.requests.data.map((row) => row.id));
+const dashboardFilters = computed<DashboardFilters>(() => props.filters);
+useReservationDiffTrigger(dashboardRowIds, dashboardFilters, notifications);
 </script>
 
 <template>
@@ -350,6 +490,24 @@ usePagePolling(() => router.reload({ only: pollOnly(), preserveScroll: true, pre
                 </div>
             </div>
 
+            <div
+                v-if="sendModeBanner"
+                :class="[
+                    'flex items-start gap-3 rounded-md border px-4 py-3 text-sm',
+                    sendModeBanner.kind === 'auto'
+                        ? 'border-red-300 bg-red-50 text-red-900 dark:border-red-700/60 dark:bg-red-950/40 dark:text-red-100'
+                        : 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-100',
+                ]"
+                data-testid="send-mode-banner"
+            >
+                <Info class="mt-0.5 size-5 shrink-0" />
+                <div class="flex-1">
+                    <strong class="font-medium">{{ sendModeBanner.title }}</strong>
+                    <p class="leading-relaxed">{{ sendModeBanner.body }}</p>
+                </div>
+                <Link :href="route('settings.send-mode.edit')" class="shrink-0 text-sm font-medium underline"> Einstellungen </Link>
+            </div>
+
             <header class="flex flex-wrap items-end justify-between gap-4" data-testid="restaurant-header">
                 <div>
                     <h1 class="text-2xl font-semibold tracking-tight">{{ restaurantName }}</h1>
@@ -367,6 +525,7 @@ usePagePolling(() => router.reload({ only: pollOnly(), preserveScroll: true, pre
                     >
                         In Bearbeitung: <strong>{{ props.stats.in_review }}</strong>
                     </span>
+                    <DashboardExportDropdown :filters="props.filters" />
                 </div>
             </header>
 
@@ -604,112 +763,203 @@ usePagePolling(() => router.reload({ only: pollOnly(), preserveScroll: true, pre
                     </SheetDescription>
                 </SheetHeader>
 
-                <dl class="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-2 text-sm" data-testid="reservation-detail-fields">
-                    <dt class="font-medium text-muted-foreground">Eingegangen</dt>
-                    <dd>{{ renderTime(props.selectedRequest.created_at) }}</dd>
+                <div class="-mx-1 inline-flex gap-1 border-b border-border" role="tablist" data-testid="drawer-tabs">
+                    <button
+                        type="button"
+                        role="tab"
+                        :aria-selected="activeDrawerTab === 'details'"
+                        class="px-3 py-2 text-sm font-medium transition-colors"
+                        :class="
+                            activeDrawerTab === 'details'
+                                ? 'border-b-2 border-primary text-foreground'
+                                : 'text-muted-foreground hover:text-foreground'
+                        "
+                        data-testid="drawer-tab-details"
+                        @click="selectDrawerTab('details')"
+                    >
+                        Details
+                    </button>
+                    <button
+                        type="button"
+                        role="tab"
+                        :aria-selected="activeDrawerTab === 'history'"
+                        class="px-3 py-2 text-sm font-medium transition-colors"
+                        :class="
+                            activeDrawerTab === 'history'
+                                ? 'border-b-2 border-primary text-foreground'
+                                : 'text-muted-foreground hover:text-foreground'
+                        "
+                        data-testid="drawer-tab-history"
+                        @click="selectDrawerTab('history')"
+                    >
+                        Verlauf
+                    </button>
+                </div>
 
-                    <dt class="font-medium text-muted-foreground">Wunschzeit</dt>
-                    <dd>{{ renderTime(props.selectedRequest.desired_at) }}</dd>
+                <ReservationThreadHistory
+                    v-if="activeDrawerTab === 'history'"
+                    :messages="props.threadMessages"
+                    :timezone="restaurantTimezone"
+                    :loading="threadMessagesLoading"
+                />
 
-                    <dt class="font-medium text-muted-foreground">Personen</dt>
-                    <dd>{{ props.selectedRequest.party_size }}</dd>
+                <template v-if="activeDrawerTab === 'details'">
+                    <dl class="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-2 text-sm" data-testid="reservation-detail-fields">
+                        <dt class="font-medium text-muted-foreground">Eingegangen</dt>
+                        <dd>{{ renderTime(props.selectedRequest.created_at) }}</dd>
 
-                    <dt class="font-medium text-muted-foreground">E-Mail</dt>
-                    <dd class="break-all">{{ props.selectedRequest.guest_email ?? '–' }}</dd>
+                        <dt class="font-medium text-muted-foreground">Wunschzeit</dt>
+                        <dd>{{ renderTime(props.selectedRequest.desired_at) }}</dd>
 
-                    <dt class="font-medium text-muted-foreground">Telefon</dt>
-                    <dd>{{ props.selectedRequest.guest_phone ?? '–' }}</dd>
-                </dl>
+                        <dt class="font-medium text-muted-foreground">Personen</dt>
+                        <dd>{{ props.selectedRequest.party_size }}</dd>
 
-                <section v-if="props.selectedRequest.message" class="space-y-1.5">
-                    <h3 class="text-sm font-medium text-muted-foreground">Nachricht</h3>
-                    <p class="whitespace-pre-line rounded-md border border-border bg-muted/30 p-3 text-sm">
-                        {{ props.selectedRequest.message }}
-                    </p>
-                </section>
+                        <dt class="font-medium text-muted-foreground">E-Mail</dt>
+                        <dd class="break-all">{{ props.selectedRequest.guest_email ?? '–' }}</dd>
 
-                <Collapsible
-                    v-if="props.selectedRequest.raw_email_body"
-                    v-model:open="rawEmailOpen"
-                    class="space-y-2"
-                    data-testid="raw-email-collapsible"
-                >
-                    <CollapsibleTrigger as-child>
-                        <Button variant="outline" size="sm" class="w-full justify-between">
-                            <span>Original-E-Mail anzeigen</span>
-                            <ChevronDown class="size-4 transition-transform" :class="rawEmailOpen ? 'rotate-180' : ''" />
-                        </Button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                        <pre
-                            class="max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted/30 p-3 text-xs leading-relaxed"
-                            data-testid="raw-email-body"
-                            >{{ props.selectedRequest.raw_email_body }}</pre
-                        >
-                    </CollapsibleContent>
-                </Collapsible>
+                        <dt class="font-medium text-muted-foreground">Telefon</dt>
+                        <dd>{{ props.selectedRequest.guest_phone ?? '–' }}</dd>
+                    </dl>
 
-                <section v-if="props.selectedRequest.latest_reply" class="space-y-2 border-t border-border pt-4" data-testid="ai-reply-section">
-                    <div class="flex items-center justify-between">
-                        <h3 class="text-sm font-medium">KI-Antwortvorschlag</h3>
-                        <span
-                            class="rounded-full px-2 py-0.5 text-xs font-medium"
-                            :class="REPLY_STATUS_BADGE[props.selectedRequest.latest_reply.status]"
-                            data-testid="ai-reply-status"
-                        >
-                            {{ REPLY_STATUS_LABEL[props.selectedRequest.latest_reply.status] }}
-                        </span>
-                    </div>
+                    <section v-if="props.selectedRequest.message" class="space-y-1.5">
+                        <h3 class="text-sm font-medium text-muted-foreground">Nachricht</h3>
+                        <p class="whitespace-pre-line rounded-md border border-border bg-muted/30 p-3 text-sm">
+                            {{ props.selectedRequest.message }}
+                        </p>
+                    </section>
 
-                    <textarea
-                        v-model="replyBody"
-                        :disabled="!isReplyEditable"
-                        rows="8"
-                        class="w-full resize-y rounded-md border border-border bg-background p-3 text-sm leading-relaxed disabled:cursor-not-allowed disabled:opacity-60"
-                        data-testid="ai-reply-textarea"
-                    ></textarea>
-
-                    <Collapsible v-if="isReplyEditable && isEdited" v-model:open="diffOpen" class="space-y-2" data-testid="ai-reply-diff-collapsible">
+                    <Collapsible
+                        v-if="props.selectedRequest.raw_email_body"
+                        v-model:open="rawEmailOpen"
+                        class="space-y-2"
+                        data-testid="raw-email-collapsible"
+                    >
                         <CollapsibleTrigger as-child>
-                            <Button variant="outline" size="sm" class="w-full justify-between" data-testid="ai-reply-diff-toggle">
-                                <span>Änderungen gegenüber dem KI-Vorschlag anzeigen</span>
-                                <ChevronDown class="size-4 transition-transform" :class="diffOpen ? 'rotate-180' : ''" />
+                            <Button variant="outline" size="sm" class="w-full justify-between">
+                                <span>Original-E-Mail anzeigen</span>
+                                <ChevronDown class="size-4 transition-transform" :class="rawEmailOpen ? 'rotate-180' : ''" />
                             </Button>
                         </CollapsibleTrigger>
                         <CollapsibleContent>
-                            <ol class="space-y-1 rounded-md border border-border bg-muted/30 p-3 text-xs leading-relaxed" data-testid="ai-reply-diff">
-                                <li
-                                    v-for="(line, idx) in replyDiff"
-                                    :key="idx"
-                                    :class="{
-                                        'text-emerald-700 dark:text-emerald-400': line.kind === 'added',
-                                        'text-red-700 line-through dark:text-red-400': line.kind === 'removed',
-                                        'text-muted-foreground': line.kind === 'context',
-                                    }"
-                                >
-                                    <span class="select-none pr-2 font-mono">{{ DIFF_PREFIX[line.kind] }}</span>
-                                    <span class="whitespace-pre-wrap">{{ line.text || ' ' }}</span>
-                                </li>
-                            </ol>
+                            <pre
+                                class="max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted/30 p-3 text-xs leading-relaxed"
+                                data-testid="raw-email-body"
+                                >{{ props.selectedRequest.raw_email_body }}</pre
+                            >
                         </CollapsibleContent>
                     </Collapsible>
 
-                    <p
-                        v-if="props.selectedRequest.latest_reply.status === 'failed' && props.selectedRequest.latest_reply.error_message"
-                        class="text-xs text-red-600 dark:text-red-400"
-                        data-testid="ai-reply-error"
-                    >
-                        Versand fehlgeschlagen: {{ props.selectedRequest.latest_reply.error_message }}
-                    </p>
+                    <section v-if="props.selectedRequest.latest_reply" class="space-y-2 border-t border-border pt-4" data-testid="ai-reply-section">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-sm font-medium">KI-Antwortvorschlag</h3>
+                            <span
+                                class="rounded-full px-2 py-0.5 text-xs font-medium"
+                                :class="REPLY_STATUS_BADGE[props.selectedRequest.latest_reply.status]"
+                                data-testid="ai-reply-status"
+                            >
+                                {{ REPLY_STATUS_LABEL[props.selectedRequest.latest_reply.status] }}
+                            </span>
+                        </div>
 
-                    <p v-if="props.selectedRequest.latest_reply.sent_at" class="text-xs text-muted-foreground" data-testid="ai-reply-sent-at">
-                        Versendet: {{ renderTime(props.selectedRequest.latest_reply.sent_at) }}
-                    </p>
+                        <div
+                            v-if="isShadowReply"
+                            class="rounded-md border border-yellow-300 bg-yellow-50 p-3 text-xs text-yellow-900 dark:border-yellow-800 dark:bg-yellow-950/40 dark:text-yellow-200"
+                            data-testid="ai-reply-shadow-banner"
+                        >
+                            <p class="font-medium">Schatten-Modus — diese Antwort wurde <strong>nicht</strong> versendet.</p>
+                            <p v-if="props.selectedRequest.latest_reply.auto_send_scheduled_for" class="mt-1">
+                                Hätte automatisch versendet werden sollen am
+                                {{ renderTime(props.selectedRequest.latest_reply.auto_send_scheduled_for) }}.
+                            </p>
+                            <p v-else class="mt-1">Du kannst den KI-Text bearbeiten und manuell freigeben — Auswertung läuft im Hintergrund.</p>
+                        </div>
 
-                    <Button v-if="isReplyEditable" :disabled="approving" class="w-full" data-testid="ai-reply-approve" @click="submitApproval">
-                        {{ isEdited ? 'Bearbeitete Version senden' : 'Freigeben & Versenden' }}
-                    </Button>
-                </section>
+                        <div
+                            v-if="isScheduledAutoSend"
+                            class="rounded-md border border-orange-300 bg-orange-50 p-3 text-xs text-orange-900 dark:border-orange-800 dark:bg-orange-950/40 dark:text-orange-200"
+                            data-testid="ai-reply-scheduled-banner"
+                        >
+                            <p class="font-medium">
+                                <span v-if="autoSendCountdown.secondsLeft.value > 0">
+                                    Wird automatisch versendet in {{ autoSendCountdown.secondsLeft.value }} s.
+                                </span>
+                                <span v-else>Auto-Versand wird gerade ausgelöst …</span>
+                            </p>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                class="mt-2"
+                                :disabled="cancellingAutoSend || autoSendCountdown.isExpired.value"
+                                data-testid="ai-reply-cancel-auto-send"
+                                @click="cancelAutoSend"
+                            >
+                                Versand abbrechen
+                            </Button>
+                        </div>
+
+                        <textarea
+                            v-model="replyBody"
+                            :disabled="!isReplyEditable"
+                            rows="8"
+                            class="w-full resize-y rounded-md border border-border bg-background p-3 text-sm leading-relaxed disabled:cursor-not-allowed disabled:opacity-60"
+                            data-testid="ai-reply-textarea"
+                        ></textarea>
+
+                        <Collapsible
+                            v-if="isReplyEditable && isEdited"
+                            v-model:open="diffOpen"
+                            class="space-y-2"
+                            data-testid="ai-reply-diff-collapsible"
+                        >
+                            <CollapsibleTrigger as-child>
+                                <Button variant="outline" size="sm" class="w-full justify-between" data-testid="ai-reply-diff-toggle">
+                                    <span>Änderungen gegenüber dem KI-Vorschlag anzeigen</span>
+                                    <ChevronDown class="size-4 transition-transform" :class="diffOpen ? 'rotate-180' : ''" />
+                                </Button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                                <ol
+                                    class="space-y-1 rounded-md border border-border bg-muted/30 p-3 text-xs leading-relaxed"
+                                    data-testid="ai-reply-diff"
+                                >
+                                    <li
+                                        v-for="(line, idx) in replyDiff"
+                                        :key="idx"
+                                        :class="{
+                                            'text-emerald-700 dark:text-emerald-400': line.kind === 'added',
+                                            'text-red-700 line-through dark:text-red-400': line.kind === 'removed',
+                                            'text-muted-foreground': line.kind === 'context',
+                                        }"
+                                    >
+                                        <span class="select-none pr-2 font-mono">{{ DIFF_PREFIX[line.kind] }}</span>
+                                        <span class="whitespace-pre-wrap">{{ line.text || ' ' }}</span>
+                                    </li>
+                                </ol>
+                            </CollapsibleContent>
+                        </Collapsible>
+
+                        <p
+                            v-if="props.selectedRequest.latest_reply.status === 'failed' && props.selectedRequest.latest_reply.error_message"
+                            class="text-xs text-red-600 dark:text-red-400"
+                            data-testid="ai-reply-error"
+                        >
+                            Versand fehlgeschlagen: {{ props.selectedRequest.latest_reply.error_message }}
+                        </p>
+
+                        <p v-if="props.selectedRequest.latest_reply.sent_at" class="text-xs text-muted-foreground" data-testid="ai-reply-sent-at">
+                            Versendet: {{ renderTime(props.selectedRequest.latest_reply.sent_at) }}
+                        </p>
+
+                        <Button v-if="isReplyEditable" :disabled="approving" class="w-full" data-testid="ai-reply-approve" @click="submitApproval">
+                            <template v-if="isShadowReply">
+                                {{ isEdited ? 'Bearbeitete Version manuell senden' : 'Doch manuell freigeben & versenden' }}
+                            </template>
+                            <template v-else>
+                                {{ isEdited ? 'Bearbeitete Version senden' : 'Freigeben & Versenden' }}
+                            </template>
+                        </Button>
+                    </section>
+                </template>
             </SheetContent>
         </Sheet>
     </AppLayout>

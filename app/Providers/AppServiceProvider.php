@@ -6,6 +6,8 @@ use App\Services\AI\Contracts\ReplyGenerator;
 use App\Services\AI\OpenAiReplyGenerator;
 use App\Services\Email\Contracts\ImapMailboxFactory;
 use App\Services\Email\WebklexImapMailboxFactory;
+use App\Services\Exports\Contracts\ExportGenerator;
+use App\Services\Exports\FormatRoutingExportGenerator;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -17,6 +19,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->bind(ImapMailboxFactory::class, WebklexImapMailboxFactory::class);
         $this->app->bind(ReplyGenerator::class, OpenAiReplyGenerator::class);
+        $this->app->bind(ExportGenerator::class, FormatRoutingExportGenerator::class);
     }
 
     /**

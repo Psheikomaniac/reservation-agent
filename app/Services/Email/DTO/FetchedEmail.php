@@ -13,5 +13,9 @@ final readonly class FetchedEmail
         public ?string $senderName,
         public string $rawHeaders,
         public string $rawBody,
+        public string $inReplyTo = '',
+        public string $references = '',
+        public string $subject = '',
+        public string $toAddress = '',
     ) {}
 }

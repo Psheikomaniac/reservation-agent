@@ -25,4 +25,16 @@ final class RestaurantPolicy
         return $user->restaurant_id === $restaurant->id
             && $user->role === UserRole::Owner;
     }
+
+    /**
+     * Send-mode changes (manual ↔ shadow ↔ auto and the killswitch) are
+     * security-relevant: in `auto` mode the system mails guests without
+     * operator confirmation. PRD-007 reserves this surface for owners —
+     * staff users get a 403 even on their own restaurant.
+     */
+    public function manageSendMode(User $user, Restaurant $restaurant): bool
+    {
+        return $user->restaurant_id === $restaurant->id
+            && $user->role === UserRole::Owner;
+    }
 }

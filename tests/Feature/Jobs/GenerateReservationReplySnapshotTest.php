@@ -9,6 +9,7 @@ use App\Models\ReservationReply;
 use App\Models\ReservationRequest;
 use App\Models\Restaurant;
 use App\Services\AI\Contracts\ReplyGenerator;
+use App\Services\AI\OpenAiReplyGenerator;
 use App\Services\AI\ReservationContextBuilder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -65,7 +66,7 @@ class GenerateReservationReplySnapshotTest extends TestCase
         });
     }
 
-    public function test_happy_path_snapshot_is_byte_identical_to_builder_output(): void
+    public function test_happy_path_snapshot_preserves_builder_context_alongside_meta_fields(): void
     {
         $request = $this->makeRequest();
         $expected = (new ReservationContextBuilder)->build($request);
@@ -77,7 +78,16 @@ class GenerateReservationReplySnapshotTest extends TestCase
         /** @var ReservationReply $reply */
         $reply = ReservationReply::withoutGlobalScopes()->where('reservation_request_id', $request->id)->sole();
         $this->assertNotNull($reply->ai_prompt_snapshot);
-        $this->assertSame($expected, $reply->ai_prompt_snapshot);
+
+        // Each builder-produced context key is preserved verbatim.
+        foreach ($expected as $key => $value) {
+            $this->assertSame($value, $reply->ai_prompt_snapshot[$key], "Context key `{$key}` must be preserved.");
+        }
+
+        // PRD-008 meta fields ride next to the context.
+        $this->assertSame('Guten Tag, gerne!', $reply->ai_prompt_snapshot['original_body']);
+        $this->assertArrayHasKey('model', $reply->ai_prompt_snapshot);
+        $this->assertFalse($reply->ai_prompt_snapshot['fallback']);
     }
 
     public function test_snapshot_contains_every_top_level_block(): void
@@ -116,6 +126,19 @@ class GenerateReservationReplySnapshotTest extends TestCase
             $reply->ai_prompt_snapshot,
             'Fallback draft must still carry the context that WOULD have been sent.'
         );
-        $this->assertSame($expected, $reply->ai_prompt_snapshot);
+
+        // Context is preserved next to the fallback meta.
+        foreach ($expected as $key => $value) {
+            $this->assertSame($value, $reply->ai_prompt_snapshot[$key]);
+        }
+
+        // PRD-008 risk: pre-V2 replies with no `original_body` count as
+        // "not modified". Replies on the fallback path carry the neutral
+        // fallback text as their original, plus a fallback flag.
+        $this->assertSame(
+            OpenAiReplyGenerator::FALLBACK_TEXT,
+            $reply->ai_prompt_snapshot['original_body'],
+        );
+        $this->assertTrue($reply->ai_prompt_snapshot['fallback']);
     }
 }

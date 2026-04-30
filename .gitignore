@@ -14,6 +14,14 @@
 /.phpactor.json
 /storage/*.key
 /storage/pail
+/storage/framework/cache/data/*
+!/storage/framework/cache/data/.gitkeep
+/storage/framework/sessions/*
+!/storage/framework/sessions/.gitkeep
+/storage/framework/testing/*
+!/storage/framework/testing/.gitkeep
+/storage/framework/views/*
+!/storage/framework/views/.gitkeep
 /auth.json
 
 # Local SQLite (developer artefact, not source)
@@ -40,3 +48,6 @@ yarn-error.log
 *.log
 Homestead.json
 Homestead.yaml
+
+# Tooling scratch
+.playwright-mcp/

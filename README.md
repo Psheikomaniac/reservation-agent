@@ -143,20 +143,43 @@ reservation-agent/
 
 ---
 
-## Bewusst NICHT in V1.0
+## Roadmap nach V1.0
 
-| Feature                                 | Version |
-|-----------------------------------------|---------|
-| OpenTable / TheFork / Quandoo Anbindung | V2.0    |
-| Google Reserve / Google Business        | V2.0    |
-| Automatischer Mailversand ohne Freigabe | V2.0    |
-| Tischplan / grafische Sitzordnung       | V2.0    |
-| Zahlungs-Hinterlegung / No-Show-Gebühr  | V2.0    |
-| Mehrsprachige Antworten                 | V2.0    |
-| Analytics / Reporting                   | V2.0    |
-| Multi-Standort-Verwaltung > 5 Standorte | V3.0    |
-| Mobile App                              | V3.0    |
-| Lokale KI (Ollama/Llama)                | V3.0    |
+Detail-Begründung & Versions-Themen für V3+ stehen im V3–V7-Roadmap-Spec: [`docs/superpowers/specs/2026-04-29-v3-plus-roadmap-design.md`](docs/superpowers/specs/2026-04-29-v3-plus-roadmap-design.md).
+
+| Feature                                          | Version | Status                                                              |
+|--------------------------------------------------|---------|---------------------------------------------------------------------|
+| Mail-Threading                                   | V2.0    | scoped → [PRD-006](docs/PRD-006-mail-threading.md)                  |
+| Automatischer Mailversand (opt-in mit Hard-Gates)| V2.0    | scoped → [PRD-007](docs/PRD-007-auto-send-trust-modes.md)           |
+| Analytics / Reporting                            | V2.0    | scoped → [PRD-008](docs/PRD-008-dashboard-analytics.md)             |
+| Export CSV/PDF                                   | V2.0    | scoped → [PRD-009](docs/PRD-009-export-csv-pdf.md)                  |
+| Push / Sound-Alerts / Daily Digest (Code-Pfad)   | V2.0    | scoped → [PRD-010](docs/PRD-010-push-and-sound-alerts.md) (Sound-Assets nach V3.0 verschoben) |
+| PRD-010 CC0-Sound-Assets                         | V3.0    | aus V2.0 verschoben (Asset-Auswahl, kein Code-Blocker)              |
+| Tisch-Liste mit Belegungsstatus                  | V3.0    | (Operative Vollständigkeit)                                         |
+| Manuelle Erfassung (Telefon / Walk-in)           | V3.0    |                                                                     |
+| Warteliste passiv                                | V3.0    | aktive Warteliste mit Notify in V4                                  |
+| WebSockets via Laravel Reverb (V3-Surfaces)      | V3.0    | Dashboard-Bestand vorerst Polling – siehe [decision](docs/decisions/polling-vs-websockets-v1.md) |
+| DSGVO-Voll-Workflow Art. 15–22                   | V3.0    | siehe [decision](docs/decisions/failed-email-imports-retention.md)  |
+| Tischplan grafisch                               | später  | aus V3 verschoben, Pilot-Feedback abwarten                          |
+| Stammgast-Profil + Tags + Sprache                | V4.0    | Anker für V4 (Gast-zentriert)                                       |
+| Aktive Warteliste mit Notify                     | V4.0    | aus V3 verschoben (braucht CRM-Daten)                               |
+| No-Show-Tracking                                 | V4.0    |                                                                     |
+| Mehrsprachige KI-Antworten (erkennen)            | V4.0    |                                                                     |
+| KI lernt aus manuellen Edits (RAG)               | V4.0    | (KI-Differenzierung)                                                |
+| Tonalität pro Restaurant statt global            | V5.0    | siehe [decision](docs/decisions/ai-tonality-prompts.md)             |
+| Mehrsprachige Antworten ausgebaut (Pflege-UI)    | V5.0    |                                                                     |
+| Lokale KI (Ollama / vLLM)                        | V5.0    | siehe [decision](docs/decisions/openai-data-protection.md)          |
+| Embeddable Widget / iframe-Variante              | V5.0    | (eigene Reichweite, selbst-getrieben)                               |
+| Promptbar / Erklärbarkeit im Dashboard           | V5.0    | baut auf RAG aus V4 auf                                             |
+| OpenTable / TheFork / Quandoo Anbindung          | V6.0    | aus V5 verschoben (externe Wellen)                                  |
+| Google Reserve / Google Business                 | V6.0    | aus V5 verschoben (externe Welle)                                   |
+| Multi-Standort-Verwaltung > 5 Standorte          | V6.0    | aus V3 verschoben (Skalierungs-Feature)                             |
+| Voll-CRM-Outreach (Geburtstag, Reaktivierung)    | V6.0    | aus V4-Idealbild verschoben                                         |
+| Anzahlung / Deposit / No-Show-Gebühr             | V7.0    | markt-validierungspflichtig                                         |
+| POS- / Kassensystem-Integration                  | V7.0    | markt-validierungspflichtig                                         |
+| Schicht- / Personal-Bezug                        | V7.0    |                                                                     |
+| Mobile App                                       | V7.0    | eigene Produkt-Linie                                                |
+| White-Label / Partner-Modell                     | V7.0    |                                                                     |
 
 ---
 

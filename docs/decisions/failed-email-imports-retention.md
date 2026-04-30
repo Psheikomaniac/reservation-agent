@@ -72,6 +72,14 @@ Jede Änderung erfordert Update dieser Datei, Anpassung der Datenschutzerklärun
 
 ## Nicht in diesem Dokument
 
-- UI für Betroffenen-Löschantrag (V2.0, eigenes Issue)
+- UI für Betroffenen-Löschantrag (V3.0, eigenes Issue – siehe Update unten)
 - Export von Quarantäne-Einträgen zur Offline-Analyse (nicht geplant)
 - Separate Retention-Frist für `reservation_requests` (eigene Entscheidung, wenn relevant)
+
+## Update April 2026 – Verschiebung der DSGVO-UI auf V3.0
+
+Diese Entscheidung hat in ihrer ursprünglichen Fassung die Betroffenen-Löschantrags-UI als „V2.0, eigenes Issue" geführt. Im Rahmen der V2.0-Roadmap-Brainstorming-Session (siehe [`docs/README.md`](../README.md) Abschnitt „Roadmap nach V1.0") wurde V2.0 bewusst auf das Schließen der zentralen Pilot-Pain-Points fokussiert (Threading, Auto-Versand, Analytics, Export, Push). Die DSGVO-UI wandert in V3.0 zusammen mit anderen operativen Robustheits-Themen (Reverb, Multi-Standort > 5).
+
+**Begründung:** Die 30-Tage-Auto-Löschung aus dieser Entscheidung erfüllt Art. 17 DSGVO bereits ohne UI – Betroffene können einen Löschantrag heute schon manuell durch den Restaurant-Owner per Tinker oder DB-Query bearbeiten lassen. Eine eigene UI ist Komfort, kein Compliance-Engpass. Die Verschiebung schiebt also keine rechtliche Pflicht auf.
+
+**Folgen für diese Entscheidung:** keine. Die Retention-Logik (30 Tage, hart) und das Audit-Log bleiben unverändert. Nur der „Nicht in diesem Dokument"-Hinweis ändert seine Versionsangabe.

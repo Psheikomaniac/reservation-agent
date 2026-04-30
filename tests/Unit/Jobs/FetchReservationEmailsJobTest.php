@@ -10,9 +10,11 @@ use App\Models\Restaurant;
 use App\Services\Email\Contracts\ImapMailboxFactory;
 use App\Services\Email\DTO\FetchedEmail;
 use App\Services\Email\EmailReservationParser;
+use App\Services\Email\ThreadResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
+use Psr\Log\NullLogger;
 use RuntimeException;
 use Tests\Support\Email\FakeImapMailboxFactory;
 use Tests\Support\Email\ThrowingImapMailboxFactory;
@@ -175,7 +177,7 @@ class FetchReservationEmailsJobTest extends TestCase
     private function runJob(int $restaurantId, ImapMailboxFactory $factory): void
     {
         $job = new FetchReservationEmailsJob($restaurantId);
-        $job->handle($factory, new EmailReservationParser);
+        $job->handle($factory, new EmailReservationParser, new ThreadResolver(new NullLogger));
     }
 
     private function makeEmail(
