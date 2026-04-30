@@ -35,6 +35,15 @@ class ExportReservationsJob implements ShouldQueue
     use SerializesModels;
 
     /**
+     * `restaurantId` is carried explicitly so the worker can
+     * re-apply tenant isolation: the queue runs without an
+     * authenticated user, which makes `RestaurantScope`
+     * short-circuit and the otherwise-implicit `where
+     * restaurant_id = ?` predicate disappear. The #239 handler
+     * must therefore call `withoutGlobalScope(RestaurantScope::class)`
+     * + `where('restaurant_id', $this->restaurantId)` (same
+     * pattern the analytics aggregator uses).
+     *
      * @param  array<string, mixed>  $filters
      */
     public function __construct(
@@ -42,6 +51,7 @@ class ExportReservationsJob implements ShouldQueue
         public readonly ExportFormat $format,
         public readonly array $filters,
         public readonly int $userId,
+        public readonly int $restaurantId,
     ) {}
 
     public function handle(): void

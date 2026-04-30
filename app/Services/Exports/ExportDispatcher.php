@@ -27,10 +27,17 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  *     {@see ExportReservationsJob} which (per #239) renders the
  *     artefact on disk and emails a signed download URL.
  *
- * Tenant isolation is implicit: the filtered query runs through
- * the global `RestaurantScope`, so the count and the downstream
- * generator both see only the user's own restaurant. The audit
- * row's `restaurant_id` is resolved from the user.
+ * Tenant isolation:
+ *   - **Sync path**: implicit. The count + generator run with the
+ *     authenticated user, so the global `RestaurantScope` applies
+ *     the `where restaurant_id = ?` predicate.
+ *   - **Async path**: must be explicit. The queue worker has no
+ *     authenticated user, so `RestaurantScope` short-circuits;
+ *     the job carries `restaurantId` and re-applies the predicate
+ *     via `withoutGlobalScope(RestaurantScope::class)` (same pattern
+ *     the analytics aggregator uses). #239's handler relies on it.
+ *
+ * The audit row's `restaurant_id` is resolved from the user.
  */
 final readonly class ExportDispatcher
 {
@@ -68,6 +75,7 @@ final readonly class ExportDispatcher
             $format,
             $filters,
             $user->id,
+            (int) $user->restaurant_id,
         );
 
         return back()->with(

@@ -95,6 +95,7 @@ class ExportDispatcherTest extends TestCase
             ExportReservationsJob::class,
             fn (ExportReservationsJob $job): bool => $job->format === ExportFormat::Pdf
                 && $job->userId === $user->id
+                && $job->restaurantId === $user->restaurant_id
                 && $job->filters === [],
         );
 
