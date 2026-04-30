@@ -56,6 +56,28 @@ class DashboardTest extends TestCase
             );
     }
 
+    public function test_authenticated_user_payload_carries_notification_settings_for_diff_trigger(): void
+    {
+        // PRD-010 #248: Dashboard.vue reads `auth.user.notification_settings`
+        // to wire the polling diff trigger into useNotifications. The shared
+        // prop has to expose the merged shape, not the raw JSON column —
+        // otherwise a fresh user would crash the composable on first poll.
+        $user = User::factory()->forRestaurant(Restaurant::factory()->create())->create();
+
+        $this->actingAs($user);
+
+        $this->get('/dashboard')
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Dashboard')
+                ->where('auth.user.notification_settings.browser_notifications', false)
+                ->where('auth.user.notification_settings.sound_alerts', false)
+                ->where('auth.user.notification_settings.daily_digest', true)
+                ->where('auth.user.notification_settings.daily_digest_at', '18:00')
+                ->etc()
+            );
+    }
+
     public function test_dashboard_emits_desired_at_as_utc_iso_for_restaurant_timezone_rendering(): void
     {
         // The client renders desired_at in restaurant-local time using the shared
