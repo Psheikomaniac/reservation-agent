@@ -361,24 +361,13 @@ final readonly class AnalyticsAggregator
      */
     private function requestsTrend(Restaurant $restaurant, AnalyticsRange $range): array
     {
-        if ($range->bucketSize() === 'day') {
-            $counts = $this->baseQuery($restaurant, $range)
-                ->selectRaw('DATE(created_at) as bucket_key, COUNT(*) as count')
-                ->groupBy('bucket_key')
-                ->pluck('count', 'bucket_key')
-                ->all();
-
-            return $this->fillBuckets(
-                $range,
-                $restaurant,
-                fn (string $key) => (int) ($counts[$key] ?? 0),
-            );
-        }
-
-        // Hourly buckets are only used for the Today range — the
-        // working set is at most one day's worth of rows, so the
-        // PHP-side loop is cheap and stays portable across the
-        // SQL dialects the project hasn't picked yet.
+        // Day-bucket SQL aggregation via `DATE(created_at)` would
+        // group rows in the DB connection's UTC, but `fillBuckets`
+        // generates keys in the restaurant's local timezone — the
+        // two diverge near midnight for any non-UTC restaurant
+        // (PRD-008 § Trend-Daten + PR #281 timezone rationale).
+        // PHP-side bucketing keeps the keys aligned without
+        // dialect-specific SQL until the eventual prod DB is fixed.
         $timezone = $restaurant->timezone ?? config('app.timezone');
 
         $counts = $this->baseQuery($restaurant, $range)
@@ -408,34 +397,9 @@ final readonly class AnalyticsAggregator
      */
     private function confirmationRateTrend(Restaurant $restaurant, AnalyticsRange $range): array
     {
-        if ($range->bucketSize() === 'day') {
-            $totals = $this->baseQuery($restaurant, $range)
-                ->selectRaw('DATE(created_at) as bucket_key, COUNT(*) as count')
-                ->groupBy('bucket_key')
-                ->pluck('count', 'bucket_key')
-                ->all();
-
-            $confirmed = $this->baseQuery($restaurant, $range)
-                ->where('status', ReservationStatus::Confirmed->value)
-                ->selectRaw('DATE(created_at) as bucket_key, COUNT(*) as count')
-                ->groupBy('bucket_key')
-                ->pluck('count', 'bucket_key')
-                ->all();
-
-            return $this->fillBuckets(
-                $range,
-                $restaurant,
-                function (string $key) use ($totals, $confirmed): int {
-                    $total = (int) ($totals[$key] ?? 0);
-                    if ($total === 0) {
-                        return 0;
-                    }
-
-                    return (int) round(((int) ($confirmed[$key] ?? 0)) / $total * 100);
-                },
-            );
-        }
-
+        // Same timezone-correctness reason as `requestsTrend` —
+        // SQL `DATE(created_at)` would silently drift records near
+        // midnight into the wrong bucket for non-UTC restaurants.
         $timezone = $restaurant->timezone ?? config('app.timezone');
 
         $rows = $this->baseQuery($restaurant, $range)
@@ -481,24 +445,6 @@ final readonly class AnalyticsAggregator
         $timezone = $restaurant->timezone ?? config('app.timezone');
         $start = $range->startsAt($timezone);
         $end = $range->endsAt($timezone);
-
-        if ($range->bucketSize() === 'day') {
-            $counts = DB::table('reservation_messages')
-                ->join('reservation_requests', 'reservation_messages.reservation_request_id', '=', 'reservation_requests.id')
-                ->where('reservation_messages.direction', MessageDirection::In->value)
-                ->where('reservation_requests.restaurant_id', $restaurant->id)
-                ->whereBetween('reservation_messages.created_at', [$start, $end])
-                ->selectRaw('DATE(reservation_messages.created_at) as bucket_key, COUNT(*) as count')
-                ->groupBy('bucket_key')
-                ->pluck('count', 'bucket_key')
-                ->all();
-
-            return $this->fillBuckets(
-                $range,
-                $restaurant,
-                fn (string $key) => (int) ($counts[$key] ?? 0),
-            );
-        }
 
         $createdAts = ReservationMessage::query()
             ->where('direction', MessageDirection::In->value)
