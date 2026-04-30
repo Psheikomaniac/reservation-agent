@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Services\Analytics;
 
 use App\Enums\AnalyticsRange;
+use App\Enums\ReservationReplyStatus;
 use App\Enums\ReservationSource;
 use App\Enums\ReservationStatus;
+use App\Models\ReservationReply;
 use App\Models\ReservationRequest;
 use App\Models\Restaurant;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
@@ -28,9 +30,9 @@ use Illuminate\Database\Eloquent\Builder;
  * "auth user is null in jobs" trap and the "wrong tenant cached"
  * trap a global scope would invite.
  *
- * Issue #226 wires the totals / by-source / by-status branch.
- * Sibling issues fill `responseTime`, `editRate`, `sendModeStats`
- * and `trends`.
+ * Issue #226 wires the totals / by-source / by-status branch;
+ * issue #227 adds `responseTime`. Sibling issues still fill
+ * `editRate`, `sendModeStats` and `trends`.
  */
 final readonly class AnalyticsAggregator
 {
@@ -52,7 +54,7 @@ final readonly class AnalyticsAggregator
                 totals: $this->totals($restaurant, $range),
                 sources: $this->bySource($restaurant, $range),
                 statusBreakdown: $this->byStatus($restaurant, $range),
-                responseTime: ResponseTimeStats::empty(),
+                responseTime: $this->responseTime($restaurant, $range),
                 editRate: null,
                 sendModeStats: null,
                 trends: [],
@@ -106,6 +108,105 @@ final readonly class AnalyticsAggregator
         }
 
         return $result;
+    }
+
+    /**
+     * Median + p90 minutes between `request->created_at` and the
+     * **first** sent reply's `sent_at`.
+     *
+     * Only the `Sent` reply state counts: `Draft`, `Approved`,
+     * `Failed`, `Shadow`, `ScheduledAutoSend` and `CancelledAuto`
+     * are deliberately ignored — `Approved` exists in the schema
+     * but its `sent_at` is `null` until the SMTP send actually
+     * completes, and the shadow / auto-send branches are a
+     * different time-to-customer story (PRD-008 § Response-Time).
+     *
+     * Percentiles are computed in PHP because SQLite has no
+     * `PERCENTILE_CONT`. Up to ~10k rows per range that's well
+     * inside the 500 ms budget the performance benchmark issue
+     * defends; above that we'd swap this for an aggregation
+     * repository with DB-specific implementations.
+     */
+    private function responseTime(Restaurant $restaurant, AnalyticsRange $range): ResponseTimeStats
+    {
+        $timezone = $restaurant->timezone ?? config('app.timezone');
+
+        $replies = ReservationReply::query()
+            ->withoutGlobalScopes()
+            ->where('status', ReservationReplyStatus::Sent->value)
+            ->whereNotNull('sent_at')
+            ->whereHas(
+                'reservationRequest',
+                fn (Builder $query) => $query
+                    ->withoutGlobalScopes()
+                    ->where('restaurant_id', $restaurant->id)
+                    ->where('created_at', '>=', $range->startsAt($timezone))
+                    ->where('created_at', '<=', $range->endsAt($timezone)),
+            )
+            ->with([
+                'reservationRequest' => fn ($query) => $query->withoutGlobalScopes(),
+            ])
+            ->orderBy('sent_at')
+            ->get();
+
+        $deltas = $replies
+            ->groupBy('reservation_request_id')
+            ->map(fn ($group) => $group->first())
+            ->map(static fn (ReservationReply $reply): int => (int) max(
+                0,
+                $reply->reservationRequest->created_at->diffInMinutes($reply->sent_at),
+            ))
+            ->sort()
+            ->values()
+            ->all();
+
+        if ($deltas === []) {
+            return ResponseTimeStats::empty();
+        }
+
+        return new ResponseTimeStats(
+            medianMinutes: $this->percentile($deltas, 0.5),
+            p90Minutes: $this->percentile($deltas, 0.9),
+            sampleSize: count($deltas),
+        );
+    }
+
+    /**
+     * Linear-interpolated percentile over a pre-sorted ascending
+     * array of integers. Returns `null` for an empty list.
+     *
+     * Algorithm matches NumPy's `linear` interpolation:
+     *   rank = p * (n - 1)
+     *   value = a[floor(rank)] + (rank - floor(rank))
+     *           * (a[ceil(rank)] - a[floor(rank)])
+     *
+     * @param  list<int>  $sorted
+     */
+    private function percentile(array $sorted, float $p): ?int
+    {
+        $n = count($sorted);
+
+        if ($n === 0) {
+            return null;
+        }
+
+        if ($n === 1) {
+            return $sorted[0];
+        }
+
+        $rank = $p * ($n - 1);
+        $lower = (int) floor($rank);
+        $upper = (int) ceil($rank);
+
+        if ($lower === $upper) {
+            return $sorted[$lower];
+        }
+
+        $fraction = $rank - $lower;
+
+        return (int) round(
+            $sorted[$lower] + $fraction * ($sorted[$upper] - $sorted[$lower]),
+        );
     }
 
     /**
