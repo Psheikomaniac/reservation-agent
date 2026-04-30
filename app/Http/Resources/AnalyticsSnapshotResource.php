@@ -44,6 +44,7 @@ final class AnalyticsSnapshotResource extends JsonResource
                 'auto' => $snapshot->sendModeStats->auto,
                 'shadowComparedSampleSize' => $snapshot->sendModeStats->shadowComparedSampleSize,
                 'takeoverRate' => $snapshot->sendModeStats->takeoverRate,
+                'topHardGateReasons' => $snapshot->sendModeStats->topHardGateReasons,
             ],
             'trends' => array_map(
                 fn (TrendBucket $bucket) => [

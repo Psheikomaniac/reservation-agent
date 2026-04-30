@@ -34,6 +34,8 @@ class ReservationReply extends Model
         'outbound_message_id',
         'is_fallback',
         'send_mode_at_creation',
+        'shadow_compared_at',
+        'shadow_was_modified',
         'auto_send_decision',
         'auto_send_scheduled_for',
     ];
@@ -52,6 +54,8 @@ class ReservationReply extends Model
             'sent_at' => 'datetime',
             'is_fallback' => 'boolean',
             'send_mode_at_creation' => SendMode::class,
+            'shadow_compared_at' => 'datetime',
+            'shadow_was_modified' => 'boolean',
             'auto_send_decision' => 'array',
             'auto_send_scheduled_for' => 'datetime',
         ];
