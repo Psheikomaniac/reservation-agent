@@ -131,7 +131,12 @@ final class CsvExportGenerator implements ExportGenerator
      */
     private function renderCsv(Restaurant $restaurant, array $filters): string
     {
-        $writer = Writer::createFromString();
+        // `createFromString()` is deprecated since league/csv 9.27.
+        // The replacement `Writer::fromString()` is available in 9.28
+        // (the version we installed) and avoids the
+        // E_DEPRECATED notice that PHP 8.4+ would otherwise emit on
+        // every export.
+        $writer = Writer::fromString();
         $writer->setDelimiter(self::DELIMITER);
         $writer->insertOne(self::HEADER_ROW);
 
@@ -180,12 +185,41 @@ final class CsvExportGenerator implements ExportGenerator
             self::SOURCE_LABELS[$source] ?? $source,
             $this->formatDate($request->desired_at, $timezone),
             (string) ($request->party_size ?? 0),
-            (string) ($request->guest_name ?? ''),
-            (string) ($request->guest_email ?? ''),
-            (string) ($request->guest_phone ?? ''),
+            $this->sanitizeCell((string) ($request->guest_name ?? '')),
+            $this->sanitizeCell((string) ($request->guest_email ?? '')),
+            $this->sanitizeCell((string) ($request->guest_phone ?? '')),
             $request->needs_manual_review ? 'Ja' : 'Nein',
             $latestReplyLabel,
         ];
+    }
+
+    /**
+     * CSV-injection guard: Excel / LibreOffice / Numbers treat any
+     * cell that starts with `=`, `+`, `-` or `@` as a formula and
+     * will execute it on open. A guest who registers with a name
+     * like `=HYPERLINK("https://evil.example","Click")` would turn
+     * the operator's export into an attack surface. Prefixing the
+     * cell with a tab character is the OWASP-recommended fix:
+     * spreadsheets parse it as text instead of a formula, but the
+     * displayed content stays readable.
+     *
+     * Only applied to the three operator-untrusted columns
+     * (guest_name / guest_email / guest_phone). The other cells
+     * are derived from enums or DB-controlled values that the
+     * operator can't influence.
+     */
+    private function sanitizeCell(string $value): string
+    {
+        if ($value === '') {
+            return '';
+        }
+
+        return str_starts_with($value, '=')
+            || str_starts_with($value, '+')
+            || str_starts_with($value, '-')
+            || str_starts_with($value, '@')
+            ? "\t".$value
+            : $value;
     }
 
     private function formatDate(?Carbon $value, string $timezone): string

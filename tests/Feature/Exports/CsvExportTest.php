@@ -222,6 +222,29 @@ class CsvExportTest extends TestCase
         $this->generator()->generateSync(ExportFormat::Pdf, $restaurant, []);
     }
 
+    public function test_it_sanitizes_csv_injection_attempts_in_guest_columns(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        ReservationRequest::factory()
+            ->forRestaurant($restaurant)
+            ->create([
+                'guest_name' => '=HYPERLINK("http://evil.example","Click")',
+                'guest_email' => '+evil@example.com',
+                'guest_phone' => '-49301234567',
+            ]);
+
+        $payload = $this->captureCsv(
+            $this->generator()->generateSync(ExportFormat::Csv, $restaurant, []),
+        );
+
+        // Each operator-untrusted cell that starts with =/+/-/@
+        // gets a tab prefix so spreadsheets parse it as text, not a
+        // live formula. The original value is preserved after the tab.
+        $this->assertStringContainsString("\t=HYPERLINK", $payload);
+        $this->assertStringContainsString("\t+evil@example.com", $payload);
+        $this->assertStringContainsString("\t-49301234567", $payload);
+    }
+
     public function test_render_to_string_supplies_async_path_payload(): void
     {
         $restaurant = Restaurant::factory()->create();
