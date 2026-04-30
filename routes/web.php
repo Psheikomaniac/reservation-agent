@@ -5,6 +5,7 @@ use App\Http\Controllers\PublicReservationController;
 use App\Http\Controllers\ReservationMessagesController;
 use App\Http\Controllers\ReservationReplyController;
 use App\Http\Controllers\ReservationRequestController;
+use App\Http\Controllers\SendModeKillswitchController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -33,6 +34,10 @@ Route::post('reservations/bulk-status', [ReservationRequestController::class, 'b
 Route::post('reservation-replies/{reply}/approve', [ReservationReplyController::class, 'approve'])
     ->middleware(['auth', 'verified', 'can:approve,reply'])
     ->name('reservation-replies.approve');
+
+Route::post('restaurants/{restaurant}/send-mode/killswitch', SendModeKillswitchController::class)
+    ->middleware(['auth', 'verified', 'can:manageSendMode,restaurant'])
+    ->name('restaurants.send-mode.killswitch');
 
 Route::get('r/{restaurant:slug}/reservations', [PublicReservationController::class, 'create'])
     ->name('public.reservations.create');

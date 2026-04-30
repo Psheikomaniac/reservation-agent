@@ -23,6 +23,13 @@ declare module 'ziggy-js' {
             "binding": "id"
         }
     ],
+    "restaurants.send-mode.killswitch": [
+        {
+            "name": "restaurant",
+            "required": true,
+            "binding": "id"
+        }
+    ],
     "public.reservations.create": [
         {
             "name": "restaurant",
