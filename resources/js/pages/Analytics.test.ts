@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Analytics, { type AnalyticsSnapshot } from './Analytics.vue';
 
@@ -117,10 +117,15 @@ describe('Analytics.vue', () => {
         expect(reloadMock).not.toHaveBeenCalled();
     });
 
-    it('chart renders with the provided trend data', () => {
+    it('chart renders with the provided trend data', async () => {
         const wrapper = mount(Analytics, {
             props: { snapshot: makeSnapshot() },
         });
+
+        // Line is wired up via defineAsyncComponent (PRD-008
+        // bundle budget): flush the microtask queue so the async
+        // chunk's stubbed module resolves before assertions.
+        await flushPromises();
 
         const charts = wrapper.findAll('[data-testid="chart-stub"]');
         expect(charts).toHaveLength(3);

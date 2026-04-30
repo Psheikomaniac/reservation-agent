@@ -3,11 +3,30 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
 import { Head, router } from '@inertiajs/vue3';
-import { CategoryScale, Chart as ChartJS, Filler, Legend, LinearScale, LineElement, PointElement, Title, Tooltip } from 'chart.js';
-import { computed } from 'vue';
-import { Line } from 'vue-chartjs';
+import { computed, defineAsyncComponent } from 'vue';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
+// PRD-008 Bundle-Budget: chart.js + vue-chartjs are ~70 KB gzipped,
+// above the 60 KB threshold the PRD sets for the initial bundle.
+// `defineAsyncComponent` + dynamic import keep the chart code out of
+// the SPA's initial chunk; only users navigating to /analytics
+// download it. The Chart.js global registry is set up inside the
+// async chunk so it never executes for non-analytics pages.
+const Line = defineAsyncComponent(async () => {
+    const [{ Line: LineComponent }, chartjs] = await Promise.all([import('vue-chartjs'), import('chart.js')]);
+
+    chartjs.Chart.register(
+        chartjs.CategoryScale,
+        chartjs.LinearScale,
+        chartjs.PointElement,
+        chartjs.LineElement,
+        chartjs.Title,
+        chartjs.Tooltip,
+        chartjs.Legend,
+        chartjs.Filler,
+    );
+
+    return LineComponent;
+});
 
 interface TrendBucket {
     label: string;
