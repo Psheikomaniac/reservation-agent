@@ -21,7 +21,10 @@ Kapazitäts-/Slot-Regeln                  Tonalität passend zum Restaurant
 Status-Übergänge (new→replied→...)       Auf Deutsch, höflich, eindeutig
 ```
 
-**Die KI entscheidet niemals über Verfügbarkeit.** Sie erhält ein fertiges JSON-Objekt mit Verfügbarkeitsdaten von Laravel und formuliert daraus einen Text. Jede automatische Antwort durchläuft in V1.0 einen **Freigabe-Workflow** – kein KI-generierter Text erreicht ohne menschliche Bestätigung einen Kunden.
+**Die KI entscheidet niemals über Verfügbarkeit.** Sie erhält ein fertiges JSON-Objekt mit Verfügbarkeitsdaten von Laravel und formuliert daraus einen Text. **Kein KI-generierter Text erreicht ohne menschliche Bestätigung _oder ausdrückliche Owner-Aktivierung mit Hard-Gates_ einen Kunden.**
+
+- In V1.0 ist die Freigabe-Pflicht hart: jeder Draft braucht den manuellen Klick.
+- Ab V2.0 ([PRD-007](docs/PRD-007-auto-send-trust-modes.md)) kann der Owner pro Restaurant `shadow` oder `auto` aktivieren. Der `AutoSendDecider` prüft vor jedem Auto-Versand sechs Hard-Gates – `needs_manual_review`, `fallback_text`, `party_size_over_limit`, `short_notice`, `first_time_guest`, `low_confidence_email` – und fällt bei jedem Gate auf manuelle Freigabe zurück. Auto-Sends durchlaufen ein 60-Sekunden-Cancel-Fenster, ein Killswitch setzt jederzeit auf `manual` zurück. Default neuer Restaurants bleibt `manual`.
 
 ---
 
@@ -180,7 +183,7 @@ app/
 - **Secrets nur in `.env`**: `OPENAI_API_KEY`, `IMAP_PASSWORD`, `MAIL_PASSWORD`. Im UI maskiert anzeigen (letzte 4 Zeichen).
 - **IMAP-Passwort** im Restaurant-Model über Laravel **Encrypted Casts** speichern, falls pro Restaurant konfigurierbar.
 - **Öffentlicher Reservierungs-Endpoint** (`POST /r/{slug}/reservations`) mit Rate-Limiting (`throttle:10,1`) und Honeypot-Feld.
-- **Kein KI-Output direkt an Kunden** – immer Freigabe durch Gastronom (siehe Kernprinzip).
+- **Kein KI-Output direkt an Kunden** – immer Freigabe durch Gastronom (V1.0) oder Owner-Aktivierung mit Hard-Gates plus Cancel-Window (V2.0+, siehe Kernprinzip und [PRD-007](docs/PRD-007-auto-send-trust-modes.md)).
 - **Autorisierung via Policy** (`RestaurantPolicy`, `ReservationRequestPolicy`) – **niemals** `where('restaurant_id', auth()->user()->restaurant_id)` im Controller. Tenant-Scope gehört in Policies und globale Eloquent Scopes.
 - **CSRF-Schutz** aktiv auf allen Inertia/Web-Routes (Laravel-Default).
 - **Logs**: niemals Mail-Bodies, Gäste-Namen oder -E-Mails in Log-Level `info` – nur IDs.
@@ -190,7 +193,7 @@ app/
 ## Verbote (NIEMALS tun)
 
 - ❌ KI über Tischverfügbarkeit entscheiden lassen
-- ❌ Automatischer Mailversand ohne menschliche Freigabe (in V1.0)
+- ❌ Automatischer Mailversand ohne ausdrückliche Owner-Aktivierung **und** ohne aktiven Hard-Gate-Check (auch in V2.0). Bedeutet konkret: kein Auto-Send-Pfad ohne `AutoSendDecider`, kein Pfad, der die Hard-Gates umgeht, kein Default-`auto` für neue Restaurants.
 - ❌ API-Key / IMAP-Passwort in Logs, Exceptions oder JSON-Responses
 - ❌ Direktes SQL statt Eloquent/Query Builder
 - ❌ Validierung in Controllern (gehört in FormRequests)
