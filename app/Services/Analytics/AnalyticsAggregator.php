@@ -8,11 +8,14 @@ use App\Enums\AnalyticsRange;
 use App\Enums\ReservationReplyStatus;
 use App\Enums\ReservationSource;
 use App\Enums\ReservationStatus;
+use App\Enums\SendMode;
+use App\Models\AutoSendAudit;
 use App\Models\ReservationReply;
 use App\Models\ReservationRequest;
 use App\Models\Restaurant;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Server-side aggregator for the PRD-008 dashboard.
@@ -31,8 +34,8 @@ use Illuminate\Database\Eloquent\Builder;
  * trap a global scope would invite.
  *
  * Issue #226 wires the totals / by-source / by-status branch;
- * issue #227 adds `responseTime`. Sibling issues still fill
- * `editRate`, `sendModeStats` and `trends`.
+ * issue #227 adds `responseTime`; issue #228 adds `editRate` and
+ * `sendModeStats`. Sibling issues still fill `trends`.
  */
 final readonly class AnalyticsAggregator
 {
@@ -55,8 +58,8 @@ final readonly class AnalyticsAggregator
                 sources: $this->bySource($restaurant, $range),
                 statusBreakdown: $this->byStatus($restaurant, $range),
                 responseTime: $this->responseTime($restaurant, $range),
-                editRate: null,
-                sendModeStats: null,
+                editRate: $this->editRate($restaurant, $range),
+                sendModeStats: $this->sendModeStats($restaurant, $range),
                 trends: [],
             ),
         );
@@ -207,6 +210,161 @@ final readonly class AnalyticsAggregator
         return (int) round(
             $sorted[$lower] + $fraction * ($sorted[$upper] - $sorted[$lower]),
         );
+    }
+
+    /**
+     * Edit-rate: fraction of `Sent` / `Approved` replies whose body
+     * was modified vs the AI's original draft snapshotted in
+     * `ai_prompt_snapshot.original_body`.
+     *
+     * Uses `json_extract` (SQLite + MySQL 8 compatible). Replies
+     * created before the original-body snapshot was introduced have
+     * no `original_body` key and are treated as **not modified**
+     * (PRD-008 risk note: pre-extension data should not skew the
+     * metric — they count toward the denominator but never as
+     * edits). Postgres would need an alternative `->>` expression;
+     * we'll wrap that behind a repository interface if Postgres
+     * becomes the prod target.
+     *
+     * `null` when no comparable reply exists in the window — the
+     * dashboard renders an "—" cell rather than a misleading 0 %.
+     */
+    private function editRate(Restaurant $restaurant, AnalyticsRange $range): ?float
+    {
+        $base = $this->repliesInRange($restaurant, $range)
+            ->whereIn('reservation_replies.status', [
+                ReservationReplyStatus::Sent->value,
+                ReservationReplyStatus::Approved->value,
+            ]);
+
+        $total = (clone $base)->count();
+
+        if ($total === 0) {
+            return null;
+        }
+
+        $modified = (clone $base)
+            ->whereColumn(
+                'reservation_replies.body',
+                '!=',
+                DB::raw("json_extract(reservation_replies.ai_prompt_snapshot, '$.original_body')"),
+            )
+            ->count();
+
+        return $modified / $total;
+    }
+
+    /**
+     * PRD-007 send-mode breakdown. Returns `null` when the
+     * restaurant is still on the V1.0 manual default — the
+     * dashboard hides the section entirely in that case rather
+     * than showing zeros that would suggest auto-send is wired up.
+     *
+     * `manual` / `shadow` counts come from `reservation_replies`
+     * (filtered by `send_mode_at_creation`); `auto` and the top
+     * hard-gate reasons come from `auto_send_audits`, which has
+     * its own `restaurant_id` column from PRD-007 — no join needed.
+     *
+     * `topHardGateReasons` is the top 3 `decision = manual`
+     * audit rows whose reason is NOT `mode_manual` (those are the
+     * baseline "we are configured manual" entries, not blockades).
+     */
+    private function sendModeStats(Restaurant $restaurant, AnalyticsRange $range): ?SendModeStats
+    {
+        // `null` happens when a freshly-created Restaurant model was
+        // never reloaded from the DB after insert — treated as the
+        // V1.0 manual default (the column default is `manual`).
+        if ($restaurant->send_mode === null || $restaurant->send_mode === SendMode::Manual) {
+            return null;
+        }
+
+        $timezone = $restaurant->timezone ?? config('app.timezone');
+        $start = $range->startsAt($timezone);
+        $end = $range->endsAt($timezone);
+
+        $manual = $this->repliesInRange($restaurant, $range)
+            ->where('reservation_replies.send_mode_at_creation', SendMode::Manual->value)
+            ->count();
+
+        $shadow = $this->repliesInRange($restaurant, $range)
+            ->where('reservation_replies.send_mode_at_creation', SendMode::Shadow->value)
+            ->count();
+
+        $shadowCompared = $this->repliesInRange($restaurant, $range)
+            ->where('reservation_replies.send_mode_at_creation', SendMode::Shadow->value)
+            ->whereNotNull('reservation_replies.shadow_compared_at')
+            ->count();
+
+        $shadowKept = $this->repliesInRange($restaurant, $range)
+            ->where('reservation_replies.send_mode_at_creation', SendMode::Shadow->value)
+            ->whereNotNull('reservation_replies.shadow_compared_at')
+            ->where('reservation_replies.shadow_was_modified', false)
+            ->count();
+
+        $takeoverRate = $shadowCompared === 0 ? null : $shadowKept / $shadowCompared;
+
+        $auto = AutoSendAudit::query()
+            ->where('restaurant_id', $restaurant->id)
+            ->where('decision', AutoSendAudit::DECISION_AUTO_SEND)
+            ->whereBetween('created_at', [$start, $end])
+            ->count();
+
+        /** @var list<array{reason: string, count: int}> $topHardGateReasons */
+        $topHardGateReasons = AutoSendAudit::query()
+            ->where('restaurant_id', $restaurant->id)
+            ->where('decision', AutoSendAudit::DECISION_MANUAL)
+            ->where('reason', '!=', 'mode_manual')
+            ->whereBetween('created_at', [$start, $end])
+            ->selectRaw('reason, COUNT(*) as count')
+            ->groupBy('reason')
+            ->orderByDesc('count')
+            ->limit(3)
+            ->get()
+            ->map(fn ($row) => [
+                'reason' => (string) $row->reason,
+                'count' => (int) $row->count,
+            ])
+            ->values()
+            ->all();
+
+        return new SendModeStats(
+            manual: $manual,
+            shadow: $shadow,
+            auto: $auto,
+            shadowComparedSampleSize: $shadowCompared,
+            takeoverRate: $takeoverRate,
+            topHardGateReasons: $topHardGateReasons,
+        );
+    }
+
+    /**
+     * Reply-side base query joined to the request table for tenant
+     * + range scoping. `reservation_replies` has no own
+     * `restaurant_id` column (PRD-001 schema), so the predicate sits
+     * on the joined `reservation_requests`. Both tables drop their
+     * global `RestaurantScope` so the aggregator runs cleanly in
+     * jobs, commands and tests without an authenticated user.
+     *
+     * Range filter is applied to `reservation_replies.created_at` —
+     * a reply created in the window is what the analytics need to
+     * count, regardless of when the original request was opened.
+     *
+     * @return Builder<ReservationReply>
+     */
+    private function repliesInRange(Restaurant $restaurant, AnalyticsRange $range): Builder
+    {
+        $timezone = $restaurant->timezone ?? config('app.timezone');
+
+        return ReservationReply::query()
+            ->withoutGlobalScopes()
+            ->whereHas(
+                'reservationRequest',
+                fn (Builder $query) => $query
+                    ->withoutGlobalScopes()
+                    ->where('restaurant_id', $restaurant->id),
+            )
+            ->where('reservation_replies.created_at', '>=', $range->startsAt($timezone))
+            ->where('reservation_replies.created_at', '<=', $range->endsAt($timezone));
     }
 
     /**
