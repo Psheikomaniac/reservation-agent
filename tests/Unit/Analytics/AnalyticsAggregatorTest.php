@@ -205,7 +205,10 @@ class AnalyticsAggregatorTest extends TestCase
         $this->assertNull($snapshot->responseTime->medianMinutes);
         $this->assertNull($snapshot->editRate);
         $this->assertNull($snapshot->sendModeStats);
-        $this->assertSame([], $snapshot->trends);
+        // Trends are gap-filled per the range; today → 24 hour buckets,
+        // all zero when no requests exist.
+        $this->assertCount(24, $snapshot->trends);
+        $this->assertSame(0, $snapshot->trends[0]->count);
     }
 
     public function test_constructor_uses_cache_repository_contract(): void

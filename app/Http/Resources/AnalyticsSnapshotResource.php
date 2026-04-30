@@ -54,6 +54,22 @@ final class AnalyticsSnapshotResource extends JsonResource
                 ],
                 $snapshot->trends,
             ),
+            'confirmationRateTrend' => array_map(
+                fn (TrendBucket $bucket) => [
+                    'label' => $bucket->label,
+                    'bucketStart' => $bucket->bucketStart,
+                    'count' => $bucket->count,
+                ],
+                $snapshot->confirmationRateTrend,
+            ),
+            'threadRepliesTrend' => array_map(
+                fn (TrendBucket $bucket) => [
+                    'label' => $bucket->label,
+                    'bucketStart' => $bucket->bucketStart,
+                    'count' => $bucket->count,
+                ],
+                $snapshot->threadRepliesTrend,
+            ),
         ];
     }
 }
