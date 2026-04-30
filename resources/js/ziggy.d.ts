@@ -81,6 +81,8 @@ declare module 'ziggy-js' {
     "appearance": [],
     "settings.send-mode.edit": [],
     "settings.send-mode.update": [],
+    "settings.notifications.edit": [],
+    "settings.notifications.update": [],
     "register": [],
     "login": [],
     "password.request": [],

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Settings\NotificationSettingsController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SendModeSettingsController;
@@ -24,4 +25,9 @@ Route::middleware('auth')->group(function () {
         ->name('settings.send-mode.edit');
     Route::patch('settings/send-mode', [SendModeSettingsController::class, 'update'])
         ->name('settings.send-mode.update');
+
+    Route::get('settings/notifications', [NotificationSettingsController::class, 'edit'])
+        ->name('settings.notifications.edit');
+    Route::put('settings/notifications', [NotificationSettingsController::class, 'update'])
+        ->name('settings.notifications.update');
 });
