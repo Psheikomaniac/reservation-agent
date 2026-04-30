@@ -9,12 +9,14 @@ use App\Enums\ReservationReplyStatus;
 use App\Enums\ReservationSource;
 use App\Enums\ReservationStatus;
 use App\Enums\SendMode;
+use App\Enums\UserRole;
 use App\Jobs\ScheduledAutoSendJob;
 use App\Mail\ReservationReplyMail;
 use App\Models\AutoSendAudit;
 use App\Models\ReservationReply;
 use App\Models\ReservationRequest;
 use App\Models\Restaurant;
+use App\Models\User;
 use App\Services\AI\AutoSendDecider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
@@ -126,6 +128,64 @@ class SendModeFlowTest extends TestCase
             'decision' => AutoSendAudit::DECISION_CANCELLED_AUTO,
             'reason' => AutoSendAudit::REASON_HARD_GATE_LATE_PREFIX.AutoSendDecider::REASON_PARTY_SIZE_OVER_LIMIT,
         ]);
+    }
+
+    public function test_it_cancels_scheduled_send_when_owner_clicks_cancel(): void
+    {
+        Mail::fake();
+
+        $reply = $this->scheduledReplyOnAutoRestaurant();
+        $owner = User::factory()->create([
+            'restaurant_id' => $reply->reservationRequest->restaurant_id,
+            'role' => UserRole::Owner,
+        ]);
+
+        // Operator clicks Cancel inside the cancel window.
+        $this->actingAs($owner)
+            ->post(route('reservation-replies.cancel-auto-send', $reply))
+            ->assertRedirect();
+
+        $this->assertSame(ReservationReplyStatus::CancelledAuto, $reply->fresh()->status);
+
+        // The delayed job fires after the window — must no-op cleanly.
+        (new ScheduledAutoSendJob($reply->id))->handle(app(AutoSendDecider::class));
+
+        Mail::assertNothingSent();
+        $this->assertSame(ReservationReplyStatus::CancelledAuto, $reply->fresh()->status);
+
+        // Single audit row from the cancel click; the post-cancel job
+        // run must not write a second one.
+        $this->assertSame(
+            1,
+            AutoSendAudit::query()->where('reservation_reply_id', $reply->id)->count(),
+        );
+    }
+
+    public function test_it_short_circuits_scheduled_send_when_owner_approves_manually_within_window(): void
+    {
+        Mail::fake();
+
+        $reply = $this->scheduledReplyOnAutoRestaurant();
+        $owner = User::factory()->create([
+            'restaurant_id' => $reply->reservationRequest->restaurant_id,
+            'role' => UserRole::Owner,
+        ]);
+
+        // Operator approves manually before the 60s delay elapses.
+        $this->actingAs($owner)
+            ->post(route('reservation-replies.approve', $reply), ['body' => $reply->body])
+            ->assertRedirect();
+
+        // Approve dispatches SendReservationReplyJob synchronously enough
+        // for our `sync` queue, so the mail goes out via that path…
+        Mail::assertSent(ReservationReplyMail::class, 1);
+
+        // …and when the still-queued ScheduledAutoSendJob wakes up later,
+        // its first race-guard sees `status !== ScheduledAutoSend` and
+        // returns silently — no second send goes out.
+        (new ScheduledAutoSendJob($reply->id))->handle(app(AutoSendDecider::class));
+
+        Mail::assertSent(ReservationReplyMail::class, 1);
     }
 
     /**
