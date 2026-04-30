@@ -104,6 +104,15 @@ export interface DashboardStats {
     in_review: number;
 }
 
+export interface NotificationSettings {
+    browser_notifications: boolean;
+    sound_alerts: boolean;
+    sound: string;
+    volume: number;
+    daily_digest: boolean;
+    daily_digest_at: string;
+}
+
 export type ReservationReplyStatus = 'draft' | 'approved' | 'sent' | 'failed' | 'shadow' | 'scheduled_auto_send' | 'cancelled_auto';
 
 export type SendMode = 'manual' | 'shadow' | 'auto';
