@@ -23,6 +23,15 @@ class PdfExportTest extends TestCase
     {
         parent::setUp();
         Carbon::setTestNow('2026-04-30 12:00:00');
+        // dompdf needs more headroom than PHPUnit's default 128 MB
+        // ceiling for any non-trivial export. Bumping at the start
+        // of every PDF test (rather than only the pagination one)
+        // keeps the limit consistent — restoring it post-test
+        // would actually break the *next* test, because PHP's
+        // resident memory after dompdf is already > 128 MB and
+        // any subsequent allocation would push past the lowered
+        // ceiling. Leaving it bumped is the practical fix.
+        ini_set('memory_limit', '512M');
     }
 
     protected function tearDown(): void
@@ -172,31 +181,27 @@ class PdfExportTest extends TestCase
 
     public function test_filter_summary_through_generator_uses_german_labels(): void
     {
-        $restaurant = Restaurant::factory()->create();
-        ReservationRequest::factory()->forRestaurant($restaurant)->create();
-
-        // Compose the same path the generator walks. By rendering
-        // HTML directly we sidestep PDF compression and still
-        // exercise the German enum label mapping.
-        $html = $this->renderHtml($restaurant, [
+        // Reach into the generator's own private summarizeFilters()
+        // so the assertions cover the German label mapping the
+        // production code actually performs (the test helper above
+        // skips the translation on purpose). A regression in
+        // STATUS_LABELS / SOURCE_LABELS will fail this test.
+        $generator = $this->generator();
+        $reflection = new \ReflectionMethod($generator, 'summarizeFilters');
+        /** @var list<string> $lines */
+        $lines = $reflection->invoke($generator, [
             'status' => ['confirmed', 'replied'],
             'source' => ['email'],
             'q' => 'Geburtstag',
         ]);
 
-        $this->assertStringContainsString('Status: confirmed, replied', $html);
-        $this->assertStringContainsString('Quelle: email', $html);
-        $this->assertStringContainsString('Suche: &quot;Geburtstag&quot;', $html);
+        $this->assertContains('Status: Bestätigt, Beantwortet', $lines);
+        $this->assertContains('Quelle: E-Mail', $lines);
+        $this->assertContains('Suche: "Geburtstag"', $lines);
     }
 
     public function test_it_paginates_large_lists_without_failing(): void
     {
-        // dompdf is memory-hungry; 35 rows comfortably spills onto
-        // a second page with the template's row size and stays
-        // inside PHPUnit's default 128 MB ceiling so this test
-        // doesn't blow the rest of the suite up.
-        ini_set('memory_limit', '512M');
-
         $restaurant = Restaurant::factory()->create();
 
         ReservationRequest::factory()

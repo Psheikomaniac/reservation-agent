@@ -98,14 +98,23 @@ final class PdfExportGenerator implements ExportGenerator
     {
         $timezone = $restaurant->timezone ?? config('app.timezone');
 
-        $rows = ReservationRequest::query()
+        // Walk the result set in 500-row chunks so a several-thousand
+        // reservation export doesn't double-allocate the row payload
+        // (Eloquent collection + the pre-render array). dompdf still
+        // needs the full HTML in memory for layout, but skipping the
+        // intermediate Collection materialisation buys us a real
+        // headroom slice in the queue worker.
+        $rows = [];
+        ReservationRequest::query()
             ->withoutGlobalScopes()
             ->where('restaurant_id', $restaurant->id)
             ->filter($filters)
             ->orderByDesc('desired_at')
-            ->get()
-            ->map(fn (ReservationRequest $request) => $this->row($request, $timezone))
-            ->all();
+            ->chunk(500, function ($chunk) use (&$rows, $timezone): void {
+                foreach ($chunk as $request) {
+                    $rows[] = $this->row($request, $timezone);
+                }
+            });
 
         $pdf = Pdf::loadView('exports.reservations-pdf', [
             'restaurant' => $restaurant,
