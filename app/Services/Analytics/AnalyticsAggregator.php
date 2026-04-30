@@ -139,38 +139,48 @@ final readonly class AnalyticsAggregator
     {
         $timezone = $restaurant->timezone ?? config('app.timezone');
 
-        $replies = ReservationReply::query()
-            ->withoutGlobalScopes()
-            ->where('status', ReservationReplyStatus::Sent->value)
-            ->whereNotNull('sent_at')
-            ->whereHas(
-                'reservationRequest',
-                fn (Builder $query) => $query
-                    ->withoutGlobalScopes()
-                    ->where('restaurant_id', $restaurant->id)
-                    ->where('created_at', '>=', $range->startsAt($timezone))
-                    ->where('created_at', '<=', $range->endsAt($timezone)),
-            )
-            ->with([
-                'reservationRequest' => fn ($query) => $query->withoutGlobalScopes(),
-            ])
-            ->orderBy('sent_at')
-            ->get();
+        // Fetch only the two timestamps we need for percentile maths
+        // — the previous Eloquent path materialised every reply
+        // model + eager-loaded request. At 10 k rows that blew the
+        // PHP heap; this raw join keeps the working set to two
+        // strings per reply.
+        $rows = DB::table('reservation_replies')
+            ->join('reservation_requests', 'reservation_replies.reservation_request_id', '=', 'reservation_requests.id')
+            ->where('reservation_replies.status', ReservationReplyStatus::Sent->value)
+            ->whereNotNull('reservation_replies.sent_at')
+            ->where('reservation_requests.restaurant_id', $restaurant->id)
+            ->where('reservation_requests.created_at', '>=', $range->startsAt($timezone))
+            ->where('reservation_requests.created_at', '<=', $range->endsAt($timezone))
+            ->orderBy('reservation_replies.sent_at')
+            ->get([
+                'reservation_replies.reservation_request_id as request_id',
+                'reservation_replies.sent_at as reply_sent_at',
+                'reservation_requests.created_at as request_created_at',
+            ]);
 
-        $deltas = $replies
-            ->groupBy('reservation_request_id')
-            ->map(fn ($group) => $group->first())
-            ->map(static fn (ReservationReply $reply): int => (int) max(
-                0,
-                $reply->reservationRequest->created_at->diffInMinutes($reply->sent_at),
-            ))
-            ->sort()
-            ->values()
-            ->all();
+        // First sent reply per request (the rows are pre-sorted by
+        // sent_at so the earliest wins on first-write).
+        $earliestPerRequest = [];
+        foreach ($rows as $row) {
+            if (! isset($earliestPerRequest[$row->request_id])) {
+                $earliestPerRequest[$row->request_id] = $row;
+            }
+        }
 
-        if ($deltas === []) {
+        if ($earliestPerRequest === []) {
             return ResponseTimeStats::empty();
         }
+
+        $deltas = [];
+        foreach ($earliestPerRequest as $row) {
+            $deltas[] = (int) max(
+                0,
+                Carbon::parse($row->request_created_at)
+                    ->diffInMinutes(Carbon::parse($row->reply_sent_at)),
+            );
+        }
+
+        sort($deltas);
 
         return new ResponseTimeStats(
             medianMinutes: $this->percentile($deltas, 0.5),
@@ -351,6 +361,13 @@ final readonly class AnalyticsAggregator
      */
     private function requestsTrend(Restaurant $restaurant, AnalyticsRange $range): array
     {
+        // Day-bucket SQL aggregation via `DATE(created_at)` would
+        // group rows in the DB connection's UTC, but `fillBuckets`
+        // generates keys in the restaurant's local timezone — the
+        // two diverge near midnight for any non-UTC restaurant
+        // (PRD-008 § Trend-Daten + PR #281 timezone rationale).
+        // PHP-side bucketing keeps the keys aligned without
+        // dialect-specific SQL until the eventual prod DB is fixed.
         $timezone = $restaurant->timezone ?? config('app.timezone');
 
         $counts = $this->baseQuery($restaurant, $range)
@@ -380,6 +397,9 @@ final readonly class AnalyticsAggregator
      */
     private function confirmationRateTrend(Restaurant $restaurant, AnalyticsRange $range): array
     {
+        // Same timezone-correctness reason as `requestsTrend` —
+        // SQL `DATE(created_at)` would silently drift records near
+        // midnight into the wrong bucket for non-UTC restaurants.
         $timezone = $restaurant->timezone ?? config('app.timezone');
 
         $rows = $this->baseQuery($restaurant, $range)
@@ -423,6 +443,8 @@ final readonly class AnalyticsAggregator
     private function threadRepliesTrend(Restaurant $restaurant, AnalyticsRange $range): array
     {
         $timezone = $restaurant->timezone ?? config('app.timezone');
+        $start = $range->startsAt($timezone);
+        $end = $range->endsAt($timezone);
 
         $createdAts = ReservationMessage::query()
             ->where('direction', MessageDirection::In->value)
@@ -432,8 +454,7 @@ final readonly class AnalyticsAggregator
                     ->withoutGlobalScopes()
                     ->where('restaurant_id', $restaurant->id),
             )
-            ->where('reservation_messages.created_at', '>=', $range->startsAt($timezone))
-            ->where('reservation_messages.created_at', '<=', $range->endsAt($timezone))
+            ->whereBetween('reservation_messages.created_at', [$start, $end])
             ->pluck('created_at');
 
         $counts = [];
