@@ -146,6 +146,35 @@ class SettingsTest extends TestCase
             ->assertSessionHasErrors('daily_digest_at');
     }
 
+    public function test_save_preserves_unknown_stored_keys_from_future_features(): void
+    {
+        $user = $this->userWithRestaurant();
+
+        // Simulate a forward-compat scenario: a future PRD-010
+        // sibling issue stored a key (`email_digest`) that the
+        // current 6-field form doesn't surface. The save flow
+        // must keep that value intact.
+        $user->forceFill([
+            'notification_settings' => [
+                'browser_notifications' => true,
+                'email_digest' => true,
+                'email_digest_at' => '07:30',
+            ],
+        ])->save();
+
+        $this->actingAs($user)
+            ->put(route('settings.notifications.update'), $this->payload([
+                'browser_notifications' => false,
+            ]))
+            ->assertRedirect();
+
+        $stored = User::query()->find($user->id)->notification_settings;
+        $this->assertFalse($stored['browser_notifications']);
+        // Unknown stored keys still present after the save.
+        $this->assertTrue($stored['email_digest']);
+        $this->assertSame('07:30', $stored['email_digest_at']);
+    }
+
     public function test_authenticated_user_only_modifies_their_own_settings(): void
     {
         $own = $this->userWithRestaurant();

@@ -40,12 +40,23 @@ final class NotificationSettingsController extends Controller
             abort(403);
         }
 
-        // Merge over the defaults so future PRD-010 keys land
-        // gracefully without rewriting this controller every time
-        // a sibling issue extends the settings shape.
+        // Merge the validated form fields over the *existing*
+        // stored value (read raw to bypass the accessor's
+        // default-merge), then layer NotificationSettings::merge
+        // for the default-floor on top. Without the existing-value
+        // step, a future sibling issue that adds a new key (e.g.
+        // an `email_digest` flag) would silently lose its value
+        // every time the operator saves the 6-field UI — the form
+        // payload wouldn't carry the new key, and merge-over-
+        // defaults would drop the stored value.
+        $existing = (array) json_decode(
+            (string) ($user->getRawOriginal('notification_settings') ?? '{}'),
+            true,
+        );
+
         $user->forceFill([
             'notification_settings' => NotificationSettings::merge(
-                $request->validated()
+                [...$existing, ...$request->validated()],
             ),
         ])->save();
 
