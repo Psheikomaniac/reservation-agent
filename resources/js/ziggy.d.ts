@@ -23,6 +23,13 @@ declare module 'ziggy-js' {
             "binding": "id"
         }
     ],
+    "reservation-replies.cancel-auto-send": [
+        {
+            "name": "reply",
+            "required": true,
+            "binding": "id"
+        }
+    ],
     "restaurants.send-mode.killswitch": [
         {
             "name": "restaurant",

@@ -35,6 +35,7 @@ interface DashboardProps {
     selectedRequest?: ReservationRequestDetail | null;
     threadMessages?: ThreadMessage[] | null;
     openaiKeyRejectedAt?: string | null;
+    sendMode?: 'manual' | 'shadow' | 'auto' | null;
 }
 
 const props = defineProps<DashboardProps>();
@@ -44,6 +45,28 @@ const breadcrumbs: BreadcrumbItem[] = [{ title: 'Dashboard', href: '/dashboard' 
 const page = usePage<SharedData>();
 const restaurantName = computed(() => page.props.restaurant?.name ?? '');
 const restaurantTimezone = computed(() => page.props.restaurant?.timezone);
+
+// PRD-007 mode banner. Shows yellow for shadow (test mode, no risk to
+// guests yet) and red for auto (mail flows without operator approval),
+// so the operator always knows what their dashboard is wired up to do
+// and where the killswitch lives.
+const sendModeBanner = computed(() => {
+    if (props.sendMode === 'shadow') {
+        return {
+            kind: 'shadow' as const,
+            title: 'Shadow-Modus aktiv',
+            body: 'KI-Antworten werden generiert und als „wäre versendet worden" markiert, gehen aber NICHT an Gäste.',
+        };
+    }
+    if (props.sendMode === 'auto') {
+        return {
+            kind: 'auto' as const,
+            title: 'Automatischer Versand aktiv',
+            body: 'KI-Antworten gehen 60 Sekunden nach Generierung automatisch an Gäste, sofern keine Sicherheitsregel greift.',
+        };
+    }
+    return null;
+});
 
 const STATUS_OPTIONS: { value: ReservationStatus; label: string }[] = [
     { value: 'new', label: 'Neu' },
@@ -389,6 +412,24 @@ usePagePolling(() => router.reload({ only: pollOnly(), preserveScroll: true, pre
                         die nächste Antwort erfolgreich generiert wird, verschwindet dieser Hinweis automatisch.
                     </p>
                 </div>
+            </div>
+
+            <div
+                v-if="sendModeBanner"
+                :class="[
+                    'flex items-start gap-3 rounded-md border px-4 py-3 text-sm',
+                    sendModeBanner.kind === 'auto'
+                        ? 'border-red-300 bg-red-50 text-red-900 dark:border-red-700/60 dark:bg-red-950/40 dark:text-red-100'
+                        : 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-100',
+                ]"
+                data-testid="send-mode-banner"
+            >
+                <Info class="mt-0.5 size-5 shrink-0" />
+                <div class="flex-1">
+                    <strong class="font-medium">{{ sendModeBanner.title }}</strong>
+                    <p class="leading-relaxed">{{ sendModeBanner.body }}</p>
+                </div>
+                <Link :href="route('settings.send-mode.edit')" class="shrink-0 text-sm font-medium underline"> Einstellungen </Link>
             </div>
 
             <header class="flex flex-wrap items-end justify-between gap-4" data-testid="restaurant-header">

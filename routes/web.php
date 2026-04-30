@@ -35,6 +35,10 @@ Route::post('reservation-replies/{reply}/approve', [ReservationReplyController::
     ->middleware(['auth', 'verified', 'can:approve,reply'])
     ->name('reservation-replies.approve');
 
+Route::post('reservation-replies/{reply}/cancel-auto-send', [ReservationReplyController::class, 'cancelAutoSend'])
+    ->middleware(['auth', 'verified', 'can:cancelAutoSend,reply'])
+    ->name('reservation-replies.cancel-auto-send');
+
 Route::post('restaurants/{restaurant}/send-mode/killswitch', SendModeKillswitchController::class)
     ->middleware(['auth', 'verified', 'can:manageSendMode,restaurant'])
     ->name('restaurants.send-mode.killswitch');

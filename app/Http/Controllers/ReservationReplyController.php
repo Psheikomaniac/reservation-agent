@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Enums\ReservationReplyStatus;
 use App\Http\Requests\ApproveReservationReplyRequest;
 use App\Jobs\SendReservationReplyJob;
+use App\Models\AutoSendAudit;
 use App\Models\ReservationReply;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
@@ -40,5 +41,29 @@ class ReservationReplyController extends Controller
         SendReservationReplyJob::dispatch($reply->id);
 
         return back()->with('success', 'Antwort freigegeben — sie wird gleich versendet.');
+    }
+
+    /**
+     * Cancel a still-scheduled auto-send during its 60-second cancel
+     * window (PRD-007). The actual send hasn't gone out yet — the
+     * `ScheduledAutoSendJob` will see the status flip when it wakes up
+     * and silently no-op (race-condition guard in #217).
+     */
+    public function cancelAutoSend(ReservationReply $reply): RedirectResponse
+    {
+        if ($reply->status !== ReservationReplyStatus::ScheduledAutoSend) {
+            return back()->with('error', 'Diese Antwort ist nicht im Auto-Versand-Fenster.');
+        }
+
+        $reply->forceFill(['status' => ReservationReplyStatus::CancelledAuto])->save();
+
+        AutoSendAudit::write(
+            $reply,
+            AutoSendAudit::DECISION_CANCELLED_AUTO,
+            'cancelled_by_owner',
+            Auth::id(),
+        );
+
+        return back()->with('success', 'Versand abgebrochen.');
     }
 }
