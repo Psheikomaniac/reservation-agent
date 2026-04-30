@@ -30,4 +30,16 @@ final class ReservationReplyPolicy
     {
         return $this->view($user, $reply);
     }
+
+    /**
+     * Marking a shadow reply as compared is a side-effect on view —
+     * same tenancy gate, no role distinction. The dashboard fires
+     * this on first drawer open for a shadow reply; cross-restaurant
+     * users still must not be able to flip the timestamp on someone
+     * else's data.
+     */
+    public function markShadowCompared(User $user, ReservationReply $reply): bool
+    {
+        return $this->view($user, $reply);
+    }
 }

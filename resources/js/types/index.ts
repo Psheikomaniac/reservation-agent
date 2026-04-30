@@ -104,7 +104,9 @@ export interface DashboardStats {
     in_review: number;
 }
 
-export type ReservationReplyStatus = 'draft' | 'approved' | 'sent' | 'failed';
+export type ReservationReplyStatus = 'draft' | 'approved' | 'sent' | 'failed' | 'shadow' | 'scheduled_auto_send' | 'cancelled_auto';
+
+export type SendMode = 'manual' | 'shadow' | 'auto';
 
 export interface ReservationReplySummary {
     id: number;
@@ -113,6 +115,10 @@ export interface ReservationReplySummary {
     approved_at: string | null;
     sent_at: string | null;
     error_message: string | null;
+    /** PRD-007 detail-drawer fields (issue #221). */
+    auto_send_scheduled_for: string | null;
+    shadow_compared_at: string | null;
+    send_mode_at_creation: SendMode | null;
 }
 
 export interface ReservationRequestDetail extends ReservationRequestRow {

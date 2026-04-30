@@ -44,6 +44,10 @@ Route::post('reservation-replies/{reply}/cancel-auto-send', [ReservationReplyCon
     ->middleware(['auth', 'verified', 'can:cancelAutoSend,reply'])
     ->name('reservation-replies.cancel-auto-send');
 
+Route::post('reservation-replies/{reply}/mark-shadow-compared', [ReservationReplyController::class, 'markShadowCompared'])
+    ->middleware(['auth', 'verified', 'can:markShadowCompared,reply'])
+    ->name('reservation-replies.mark-shadow-compared');
+
 Route::post('restaurants/{restaurant}/send-mode/killswitch', SendModeKillswitchController::class)
     ->middleware(['auth', 'verified', 'can:manageSendMode,restaurant'])
     ->name('restaurants.send-mode.killswitch');
