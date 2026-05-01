@@ -26,4 +26,11 @@ class ReservationTableAssignmentFactory extends Factory
             'assigned_by_user_id' => null,
         ];
     }
+
+    public function forReservationRequest(ReservationRequest $request): static
+    {
+        return $this->state(fn () => [
+            'reservation_request_id' => $request->id,
+        ]);
+    }
 }

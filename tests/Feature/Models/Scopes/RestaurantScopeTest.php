@@ -5,8 +5,10 @@ namespace Tests\Feature\Models\Scopes;
 use App\Models\FailedEmailImport;
 use App\Models\ReservationReply;
 use App\Models\ReservationRequest;
+use App\Models\ReservationTableAssignment;
 use App\Models\Restaurant;
 use App\Models\Scopes\RestaurantScope;
+use App\Models\Table;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -78,6 +80,47 @@ class RestaurantScopeTest extends TestCase
         $this->assertNotContains($foreignReply->id, $ids);
     }
 
+    public function test_authenticated_user_sees_only_tables_of_own_restaurant(): void
+    {
+        [$restaurantA, $restaurantB] = Restaurant::factory()->count(2)->create();
+        $userA = User::factory()->forRestaurant($restaurantA)->create();
+
+        $ownTable = Table::factory()->for($restaurantA)->create();
+        $foreignTable = Table::factory()->for($restaurantB)->create();
+
+        $this->actingAs($userA);
+
+        $ids = Table::query()->pluck('id')->all();
+
+        $this->assertContains($ownTable->id, $ids);
+        $this->assertNotContains($foreignTable->id, $ids);
+    }
+
+    public function test_authenticated_user_sees_only_table_assignments_belonging_to_own_restaurant(): void
+    {
+        [$restaurantA, $restaurantB] = Restaurant::factory()->count(2)->create();
+        $userA = User::factory()->forRestaurant($restaurantA)->create();
+
+        $ownRequest = ReservationRequest::factory()->forRestaurant($restaurantA)->create();
+        $foreignRequest = ReservationRequest::factory()->forRestaurant($restaurantB)->create();
+
+        $ownAssignment = ReservationTableAssignment::factory()
+            ->forReservationRequest($ownRequest)
+            ->for(Table::factory()->for($restaurantA))
+            ->create();
+        $foreignAssignment = ReservationTableAssignment::factory()
+            ->forReservationRequest($foreignRequest)
+            ->for(Table::factory()->for($restaurantB))
+            ->create();
+
+        $this->actingAs($userA);
+
+        $ids = ReservationTableAssignment::query()->pluck('id')->all();
+
+        $this->assertContains($ownAssignment->id, $ids);
+        $this->assertNotContains($foreignAssignment->id, $ids);
+    }
+
     public function test_unauthenticated_context_bypasses_the_scope_on_all_tenant_models(): void
     {
         [$restaurantA, $restaurantB] = Restaurant::factory()->count(2)->create();
@@ -87,12 +130,20 @@ class RestaurantScopeTest extends TestCase
         FailedEmailImport::factory()->forRestaurant($restaurantA)->create();
         FailedEmailImport::factory()->forRestaurant($restaurantB)->create();
         ReservationReply::factory()->forReservationRequest($requestB)->create();
+        Table::factory()->for($restaurantA)->create();
+        Table::factory()->for($restaurantB)->create();
+        ReservationTableAssignment::factory()
+            ->forReservationRequest($requestB)
+            ->for(Table::factory()->for($restaurantB))
+            ->create();
 
         $this->assertGuest();
 
         $this->assertSame(2, ReservationRequest::query()->count());
         $this->assertSame(2, FailedEmailImport::query()->count());
         $this->assertSame(1, ReservationReply::query()->count());
+        $this->assertSame(3, Table::query()->count());
+        $this->assertSame(1, ReservationTableAssignment::query()->count());
     }
 
     public function test_without_global_scope_returns_all_records_for_internal_use(): void
