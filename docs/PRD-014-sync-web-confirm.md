@@ -236,6 +236,8 @@ Setzt `WEB_SYNC_CONFIRM_GLOBAL_KILL=true` in `.env` → kein einziger Sync-Confi
 - [ ] Globaler Killswitch greift unabhängig vom Restaurant-Setting
 - [ ] `sync_confirm = true` wird auf der erzeugten `reservation_reply` gesetzt, sodass PRD-008-Analytics die Sync-Quote messen kann
 - [ ] Bei Sync-Confirm wird eine `ReservationTableAssignment` automatisch erzeugt (aus PRD-011-Vorschlag)
+- [ ] Sync-Pfad hält `lockForUpdate()` auf den vorgeschlagenen Tisch innerhalb der Transaktion (analog PRD-012)
+- [ ] Race-Test: zwei parallele Web-Submits für denselben Tisch im selben Slot → einer gewinnt mit Sync-Confirm, der andere fällt auf den V1-Pfad zurück (Status `new`)
 - [ ] Bestätigungs-Mail enthält die „automatisiert"-Hinweis-Zeile
 - [ ] User aus anderem Restaurant kann das Toggle für ein fremdes Restaurant nicht setzen (Policy)
 - [ ] Logs enthalten **keine** PII bei Sync-Pfad-Fehlern
