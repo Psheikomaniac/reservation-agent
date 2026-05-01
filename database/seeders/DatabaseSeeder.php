@@ -97,5 +97,7 @@ class DatabaseSeeder extends Seeder
                     'source' => ReservationSource::WebForm,
                 ]);
         }
+
+        $this->call(DefaultTableSeeder::class);
     }
 }
