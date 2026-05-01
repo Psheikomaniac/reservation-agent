@@ -145,7 +145,7 @@ reservation-agent/
 
 ## Roadmap nach V1.0
 
-Detail-Begründung & Versions-Themen für V3+ stehen im V3–V7-Roadmap-Spec: [`docs/superpowers/specs/2026-04-29-v3-plus-roadmap-design.md`](docs/superpowers/specs/2026-04-29-v3-plus-roadmap-design.md).
+Detail-Begründung & Versions-Themen für V3+ stehen im V3–V7-Roadmap-Spec: [`docs/superpowers/specs/2026-04-29-v3-plus-roadmap-design.md`](docs/superpowers/specs/2026-04-29-v3-plus-roadmap-design.md). Der V3-Schnitt wurde am 2026-05-01 überarbeitet, siehe [`docs/superpowers/specs/2026-05-01-v3-scope-sharpened-design.md`](docs/superpowers/specs/2026-05-01-v3-scope-sharpened-design.md).
 
 | Feature                                          | Version | Status                                                              |
 |--------------------------------------------------|---------|---------------------------------------------------------------------|
@@ -155,17 +155,19 @@ Detail-Begründung & Versions-Themen für V3+ stehen im V3–V7-Roadmap-Spec: [`
 | Export CSV/PDF                                   | V2.0    | scoped → [PRD-009](docs/PRD-009-export-csv-pdf.md)                  |
 | Push / Sound-Alerts / Daily Digest (Code-Pfad)   | V2.0    | scoped → [PRD-010](docs/PRD-010-push-and-sound-alerts.md) (Sound-Assets nach V3.0 verschoben) |
 | PRD-010 CC0-Sound-Assets                         | V3.0    | aus V2.0 verschoben (Asset-Auswahl, kein Code-Blocker)              |
-| Tisch-Liste mit Belegungsstatus                  | V3.0    | (Operative Vollständigkeit)                                         |
-| Manuelle Erfassung (Telefon / Walk-in)           | V3.0    |                                                                     |
-| Warteliste passiv                                | V3.0    | aktive Warteliste mit Notify in V4                                  |
-| WebSockets via Laravel Reverb (V3-Surfaces)      | V3.0    | Dashboard-Bestand vorerst Polling – siehe [decision](docs/decisions/polling-vs-websockets-v1.md) |
-| DSGVO-Voll-Workflow Art. 15–22                   | V3.0    | siehe [decision](docs/decisions/failed-email-imports-retention.md)  |
+| Verfügbarkeits-Modell + Tisch-Liste              | V3.0    | scoped → [PRD-011](docs/PRD-011-availability-and-tables.md)         |
+| Manuelle Erfassung (Telefon / Walk-in)           | V3.0    | scoped → [PRD-012](docs/PRD-012-manual-reservation-entry.md)        |
+| Warteliste passiv                                | V3.0    | scoped → [PRD-013](docs/PRD-013-waitlist-passive.md). Aktive Warteliste mit Notify in V4 |
+| Sync-Web-Confirm bei eindeutig freien Slots      | V3.0    | scoped → [PRD-014](docs/PRD-014-sync-web-confirm.md). Reverb-Inhalt aus V3-014 nach V4 verschoben |
+| DSGVO-Endkunden-UI (Art. 15 + 17)                | V3.0    | scoped → [PRD-015](docs/PRD-015-gdpr-self-service.md). Voller Umfang Art. 16/18/20/21/22 in V4 |
 | Tischplan grafisch                               | später  | aus V3 verschoben, Pilot-Feedback abwarten                          |
 | Stammgast-Profil + Tags + Sprache                | V4.0    | Anker für V4 (Gast-zentriert)                                       |
 | Aktive Warteliste mit Notify                     | V4.0    | aus V3 verschoben (braucht CRM-Daten)                               |
 | No-Show-Tracking                                 | V4.0    |                                                                     |
 | Mehrsprachige KI-Antworten (erkennen)            | V4.0    |                                                                     |
 | KI lernt aus manuellen Edits (RAG)               | V4.0    | (KI-Differenzierung)                                                |
+| WebSockets via Laravel Reverb (alle Surfaces)    | V4.0    | aus V3 verschoben (PRD-021); siehe [decision](docs/decisions/polling-vs-websockets-v1.md) |
+| DSGVO Art. 16/18/20/21/22 voll                   | V4.0    | aus V3 verschoben (PRD-022), braucht Stammgast-Profil aus PRD-016    |
 | Tonalität pro Restaurant statt global            | V5.0    | siehe [decision](docs/decisions/ai-tonality-prompts.md)             |
 | Mehrsprachige Antworten ausgebaut (Pflege-UI)    | V5.0    |                                                                     |
 | Lokale KI (Ollama / vLLM)                        | V5.0    | siehe [decision](docs/decisions/openai-data-protection.md)          |

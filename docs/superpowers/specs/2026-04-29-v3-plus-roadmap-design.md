@@ -1,5 +1,9 @@
 # V3–V7-Roadmap – Design-Spec
 
+> **Status-Banner (Update 2026-05-01):** Der **V3-Abschnitt** (Kapitel 2 + Tabelle 7-Zeile 1) dieses Dokuments ist **superseded** durch [`2026-05-01-v3-scope-sharpened-design.md`](2026-05-01-v3-scope-sharpened-design.md). Der dortige V3-Schnitt definiert PRD-011 bis PRD-015 inhaltlich neu; PRD-014-Reverb und voller DSGVO-Workflow sind aus V3 nach V4 (PRD-021/022) verschoben.
+>
+> **V4–V7-Abschnitte gelten weiter** – mit der Ergänzung, dass V4 zusätzlich zu PRD-016–020 die zwei aus V3 verschobenen Bausteine enthält.
+
 **Datum:** 2026-04-29
 **Stand:** V1 (PRDs 001–005) im Bau / abgeschlossen, V2 (PRDs 006–010) gescoped.
 **Output dieses Dokuments:** Versions-Themen und Kandidaten-PRDs auf Bullet-Niveau für V3–V7. **Detail-PRDs** im Stil von 006–010 werden **erst pro Version** geschrieben, sobald die jeweils vorherige Version live oder kurz davor ist – um nicht auf Pilot-Annahmen zu planen, die heute nicht überprüfbar sind.

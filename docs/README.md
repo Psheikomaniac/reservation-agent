@@ -66,6 +66,42 @@ Parallel zu Phase 2/3 (unabhängig)
 
 ---
 
+## PRDs V3.0
+
+V3.0 schließt die größte operative Lücke nach Pilotbetrieb: **Verfügbarkeit am Telefon und im Web verlässlich erkennbar machen**, plus Endkunden-sichtbare DSGVO-Basis. Schnitt definiert in [`superpowers/specs/2026-05-01-v3-scope-sharpened-design.md`](superpowers/specs/2026-05-01-v3-scope-sharpened-design.md).
+
+| Nr. | Titel                                                          | Priorität | Phase       | Abhängigkeiten |
+|-----|----------------------------------------------------------------|-----------|-------------|----------------|
+| [011](PRD-011-availability-and-tables.md)        | Verfügbarkeits-Modell + Tisch-Liste              | P0 | V3-Phase 1  | 001, 005       |
+| [012](PRD-012-manual-reservation-entry.md)       | Manuelle Erfassung Telefon/Walk-in (Live-Verfügbarkeit) | P0 | V3-Phase 2  | 011            |
+| [013](PRD-013-waitlist-passive.md)               | Warteliste passiv                                | P1 | V3-Phase 2  | 011            |
+| [014](PRD-014-sync-web-confirm.md)               | Sync-Web-Confirm bei eindeutig freien Slots      | P1 | V3-Phase 2  | 011, 007       |
+| [015](PRD-015-gdpr-self-service.md)              | DSGVO-Endkunden-UI (Art. 15 + 17)                | P0 | V3-parallel | 003, 005       |
+
+### Phasen-Reihenfolge V3.0
+
+```
+Phase 1 (Fundament)
+└── PRD-011  Verfügbarkeits-Modell + Tisch-Liste
+              │
+              ├──────────────┬──────────────┐
+              ▼              ▼              ▼
+Phase 2 (Konsumenten)
+├── PRD-012  Telefon-/Walk-in-Erfassung
+├── PRD-013  Warteliste passiv
+└── PRD-014  Sync-Web-Confirm
+
+Parallel ab Tag 1 (kein 011-Block)
+└── PRD-015  DSGVO-Endkunden-UI Art. 15 + 17
+```
+
+**Verschiebungen aus V3 → V4 (fest verankert):**
+
+- PRD-021 (V4) – Reverb für alle Surfaces (war V3-014)
+- PRD-022 (V4) – DSGVO Art. 16/18/20/21/22 voll (war V3-015)
+
+---
+
 ## Kernarchitektur-Prinzip
 
 ```
@@ -84,7 +120,7 @@ Jede automatische Antwort durchläuft einen Freigabe-Workflow – kein KI-generi
 
 ## Roadmap nach V1.0
 
-Detaillierte Versions-Themen, Begründungen und Verschiebungen stehen im V3–V7-Roadmap-Spec: [`superpowers/specs/2026-04-29-v3-plus-roadmap-design.md`](superpowers/specs/2026-04-29-v3-plus-roadmap-design.md). Die Tabelle hier ist der Schnell-Überblick.
+Detaillierte Versions-Themen, Begründungen und Verschiebungen stehen im V3–V7-Roadmap-Spec: [`superpowers/specs/2026-04-29-v3-plus-roadmap-design.md`](superpowers/specs/2026-04-29-v3-plus-roadmap-design.md). Der V3-Schnitt wurde am 2026-05-01 überarbeitet, siehe [`superpowers/specs/2026-05-01-v3-scope-sharpened-design.md`](superpowers/specs/2026-05-01-v3-scope-sharpened-design.md). Die Tabelle hier ist der Schnell-Überblick.
 
 | Feature                                          | Version | Status                                |
 |--------------------------------------------------|---------|---------------------------------------|
@@ -93,17 +129,19 @@ Detaillierte Versions-Themen, Begründungen und Verschiebungen stehen im V3–V7
 | Analytics / Reporting (Counters & 30-Tage-Trend) | V2.0    | scoped → [PRD-008](PRD-008-dashboard-analytics.md) |
 | Export CSV/PDF                                   | V2.0    | scoped → [PRD-009](PRD-009-export-csv-pdf.md) |
 | Push-Benachrichtigungen / Sound-Alerts / Digest  | V2.0    | scoped → [PRD-010](PRD-010-push-and-sound-alerts.md) |
-| Tisch-Liste mit Belegungsstatus                  | V3.0    | (Operative Vollständigkeit)           |
-| Manuelle Erfassung (Telefon / Walk-in)           | V3.0    |                                       |
-| Warteliste passiv                                | V3.0    | aktive Warteliste mit Notify in V4    |
-| WebSockets via Laravel Reverb (V3-Surfaces)      | V3.0    | Dashboard-Bestand vorerst Polling – siehe [decision](decisions/polling-vs-websockets-v1.md) |
-| DSGVO-Voll-Workflow Art. 15–22                   | V3.0    | siehe [decision](decisions/failed-email-imports-retention.md) |
+| Verfügbarkeits-Modell + Tisch-Liste              | V3.0    | scoped → [PRD-011](PRD-011-availability-and-tables.md) |
+| Manuelle Erfassung (Telefon / Walk-in)           | V3.0    | scoped → [PRD-012](PRD-012-manual-reservation-entry.md) |
+| Warteliste passiv                                | V3.0    | scoped → [PRD-013](PRD-013-waitlist-passive.md). Aktive Warteliste mit Notify in V4 |
+| Sync-Web-Confirm bei eindeutig freien Slots      | V3.0    | scoped → [PRD-014](PRD-014-sync-web-confirm.md). Reverb-Inhalt nach V4 verschoben |
+| DSGVO-Endkunden-UI (Art. 15 + 17)                | V3.0    | scoped → [PRD-015](PRD-015-gdpr-self-service.md). Art. 16/18/20/21/22 in V4 |
 | Tischplan grafisch                               | später  | aus V3 verschoben, Pilot-Feedback abwarten |
 | Stammgast-Profil + Tags + Sprache                | V4.0    | Anker für V4 (Gast-zentriert)         |
 | Aktive Warteliste mit Notify                     | V4.0    | aus V3 verschoben (braucht CRM-Daten) |
 | No-Show-Tracking                                 | V4.0    |                                       |
 | Mehrsprachige KI-Antworten (erkennen)            | V4.0    |                                       |
 | KI lernt aus manuellen Edits (RAG / Fine-Tuning) | V4.0    | (KI-Differenzierung)                  |
+| WebSockets via Laravel Reverb (alle Surfaces)    | V4.0    | aus V3 verschoben (PRD-021); siehe [decision](decisions/polling-vs-websockets-v1.md) |
+| DSGVO Art. 16/18/20/21/22 voll                   | V4.0    | aus V3 verschoben (PRD-022), braucht Stammgast-Profil PRD-016         |
 | Tonalität / Prompt pro Restaurant statt global   | V5.0    | siehe [decision](decisions/ai-tonality-prompts.md) |
 | Mehrsprachige Antworten ausgebaut (Pflege-UI)    | V5.0    |                                       |
 | Lokale KI (Ollama / vLLM)                        | V5.0    | siehe [decision](decisions/openai-data-protection.md) |
