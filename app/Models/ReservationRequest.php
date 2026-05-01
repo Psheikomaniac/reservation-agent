@@ -84,6 +84,14 @@ class ReservationRequest extends Model
     }
 
     /**
+     * @return HasMany<ReservationTableAssignment, $this>
+     */
+    public function tableAssignments(): HasMany
+    {
+        return $this->hasMany(ReservationTableAssignment::class);
+    }
+
+    /**
      * @return HasOne<ReservationReply, $this>
      */
     public function latestReply(): HasOne

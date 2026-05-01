@@ -43,6 +43,7 @@ class Restaurant extends Model
         'auto_send_min_lead_time_minutes',
         'send_mode_changed_at',
         'send_mode_changed_by',
+        'slot_buffer_minutes',
     ];
 
     /**
@@ -70,6 +71,7 @@ class Restaurant extends Model
             'auto_send_party_size_max' => 'integer',
             'auto_send_min_lead_time_minutes' => 'integer',
             'send_mode_changed_at' => 'datetime',
+            'slot_buffer_minutes' => 'integer',
         ];
     }
 
@@ -79,6 +81,14 @@ class Restaurant extends Model
     public function reservationRequests(): HasMany
     {
         return $this->hasMany(ReservationRequest::class);
+    }
+
+    /**
+     * @return HasMany<Table, $this>
+     */
+    public function tables(): HasMany
+    {
+        return $this->hasMany(Table::class);
     }
 
     /**
