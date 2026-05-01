@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models\Scopes;
 
 use App\Models\ReservationReply;
+use App\Models\ReservationTableAssignment;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Scope;
@@ -26,7 +27,7 @@ final class RestaurantScope implements Scope
             return;
         }
 
-        if ($model instanceof ReservationReply) {
+        if ($model instanceof ReservationReply || $model instanceof ReservationTableAssignment) {
             $builder->whereHas(
                 'reservationRequest',
                 fn (Builder $query) => $query->where('restaurant_id', $restaurantId)
