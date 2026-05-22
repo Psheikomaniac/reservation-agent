@@ -4,23 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { type BreadcrumbItem, type TableModel } from '@/types';
+import { type BreadcrumbItem, type QuickAvailability, type TableModel } from '@/types';
 import { Head, router } from '@inertiajs/vue3';
 import { useDebounceFn } from '@vueuse/core';
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
-
-interface AvailabilityCombination {
-    primary_table_id: number;
-    table_ids: number[];
-    total_seats: number;
-}
-
-interface QuickAvailability {
-    state: 'free' | 'tight' | 'full';
-    suggested_table_id: number | null;
-    combination: AvailabilityCombination | null;
-    alternative_slots: Array<{ date: string; time: string }>;
-}
 
 const props = defineProps<{
     tables: { data: TableModel[] };
@@ -29,6 +16,11 @@ const props = defineProps<{
 }>();
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Telefon-Reservierung', href: '/reservations/quick' }];
+
+// Matches the native-select styling used by the public ReservationForm so the
+// dropdowns line up with the adjacent Input fields.
+const selectClass =
+    'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:text-sm';
 
 const form = reactive({
     source: 'phone' as 'phone' | 'walk_in',
@@ -70,17 +62,25 @@ const bannerClass = computed(
         })[props.availability.state],
 );
 
-// Only the guest fields count as "dirty"; date/time/party always carry the
-// smart defaults, so leaving with just those untouched needs no confirmation.
+// Dirty = the operator has typed something worth losing. Date/time/party always
+// carry the smart defaults, so they do not count; only the entered guest details
+// and note do.
 const isDirty = computed(() => form.guest_name !== '' || form.guest_phone !== '' || form.guest_email !== '' || form.note !== '');
 
 // Live availability: re-fetch only the `availability` prop on every slot change,
-// debounced so typing a date/time does not fire a request per keystroke. The
-// form state is the source of truth, so it is preserved across the reload.
+// debounced so typing a date/time does not fire a request per keystroke. `form`
+// is a detached reactive object (not bound to props), so it survives the reload;
+// `preserveState` keeps the page from remounting. party_size is coerced because
+// the wrapper <Input>'s v-model.number is a no-op, and the reload is skipped
+// while the slot is incompletely entered so the server never sees an empty value.
 const refreshAvailability = useDebounceFn(() => {
+    const partySize = Number(form.party_size);
+    if (form.date === '' || form.time === '' || !Number.isFinite(partySize) || partySize < 1) {
+        return;
+    }
     router.reload({
         only: ['availability'],
-        data: { date: form.date, time: form.time, party_size: form.party_size },
+        data: { date: form.date, time: form.time, party_size: partySize },
         preserveState: true,
         preserveScroll: true,
     });
@@ -134,7 +134,11 @@ function cancel(): void {
 }
 
 // Keyboard-first: Ctrl/Cmd+Enter submits from anywhere on the form, Esc cancels.
+// isComposing guards against firing mid-IME-composition.
 function onKeydown(event: KeyboardEvent): void {
+    if (event.isComposing) {
+        return;
+    }
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
         event.preventDefault();
         submit();
@@ -153,20 +157,12 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown));
 
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="mx-auto flex w-full max-w-2xl flex-col gap-6 p-4">
-            <div class="flex items-center justify-between">
-                <h1 class="text-xl font-semibold">Telefon-Reservierung</h1>
-                <Button variant="outline" type="button" data-testid="cancel" @click="cancel">Abbrechen (Esc)</Button>
-            </div>
+            <h1 class="text-2xl font-semibold tracking-tight">Telefon-Reservierung</h1>
 
             <form class="flex flex-col gap-4" @submit.prevent="submit">
                 <div class="grid gap-2">
                     <Label for="quick-source">Art</Label>
-                    <select
-                        id="quick-source"
-                        v-model="form.source"
-                        data-testid="field-source"
-                        class="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
-                    >
+                    <select id="quick-source" v-model="form.source" data-testid="field-source" :class="selectClass">
                         <option value="phone">Telefon</option>
                         <option value="walk_in">Walk-in</option>
                     </select>
@@ -200,14 +196,14 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown));
 
                 <div class="rounded-lg border p-3 text-sm" :class="bannerClass" data-testid="availability-banner">
                     <p v-if="availability.state === 'free'">
-                        ✅ Slot frei<span v-if="proposedTables"> – {{ proposedTables }} wird vorgeschlagen</span>
+                        Slot frei<span v-if="proposedTables"> – {{ proposedTables }} wird vorgeschlagen</span>
                     </p>
                     <p v-else-if="availability.state === 'tight'">
-                        ⚠️ Slot knapp<span v-if="proposedTables"> – {{ proposedTables }} passt noch</span>, andere Slots sind sicherer
+                        Slot knapp<span v-if="proposedTables"> – {{ proposedTables }} passt noch</span>, andere Slots sind sicherer
                     </p>
                     <template v-else>
-                        <p>❌ Slot belegt.</p>
-                        <div v-if="availability.alternative_slots.length > 0" class="mt-2 flex flex-wrap gap-2">
+                        <p>Slot belegt.</p>
+                        <div v-if="availability.alternative_slots.length > 0" class="mt-2 flex flex-wrap items-center gap-2">
                             <span>Vorschläge:</span>
                             <button
                                 v-for="slot in availability.alternative_slots"
@@ -250,12 +246,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown));
 
                 <div class="grid gap-2">
                     <Label for="quick-table">Tisch</Label>
-                    <select
-                        id="quick-table"
-                        v-model="form.table_id"
-                        data-testid="field-table"
-                        class="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
-                    >
+                    <select id="quick-table" v-model="form.table_id" data-testid="field-table" :class="selectClass">
                         <option :value="null">Automatisch zuweisen</option>
                         <option v-for="table in tables.data" :key="table.id" :value="table.id">
                             Tisch {{ table.label }} ({{ table.seats }} Plätze)
@@ -265,7 +256,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown));
                 </div>
 
                 <div class="mt-2 flex justify-end gap-2">
-                    <Button type="button" variant="outline" @click="cancel">Abbrechen (Esc)</Button>
+                    <Button type="button" variant="outline" data-testid="cancel" @click="cancel">Abbrechen (Esc)</Button>
                     <Button type="submit" :disabled="processing" data-testid="submit">Speichern (Strg+Enter)</Button>
                 </div>
             </form>
