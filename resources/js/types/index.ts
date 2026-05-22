@@ -92,6 +92,26 @@ export interface PaginatedReservationRequests {
     links: { first: string | null; last: string | null; prev: string | null; next: string | null };
 }
 
+export interface TableModel {
+    id: number;
+    label: string;
+    seats: number;
+    room_tag: string | null;
+    sort_order: number;
+    active: boolean;
+    combinable_with: number[];
+    created_at: string | null;
+}
+
+export interface TableFormPayload {
+    label: string;
+    seats: number;
+    room_tag: string | null;
+    sort_order: number;
+    active: boolean;
+    combinable_with: number[];
+}
+
 export interface DashboardFilters {
     status?: ReservationStatus[];
     source?: ReservationSource[];
