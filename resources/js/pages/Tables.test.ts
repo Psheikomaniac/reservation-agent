@@ -1,5 +1,5 @@
 import type { TableModel } from '@/types';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Tables from './Tables.vue';
 
@@ -154,15 +154,33 @@ describe('Tables.vue master-data tab', () => {
         expect(patchSpy.mock.calls[0][1]).toMatchObject({ label: 'Tisch 3', seats: 4 });
     });
 
-    it('requires a confirmation before deleting and then calls router.delete', async () => {
+    it('requires a confirmation before deactivating and then calls router.delete', async () => {
         const wrapper = mountTables([makeTable({ id: 5 })]);
 
-        await wrapper.find('[data-testid="delete-5"]').trigger('click');
-        expect(wrapper.find('[data-testid="confirm-delete-5"]').exists()).toBe(true);
+        await wrapper.find('[data-testid="deactivate-5"]').trigger('click');
+        expect(wrapper.find('[data-testid="confirm-deactivate-5"]').exists()).toBe(true);
         expect(deleteSpy).not.toHaveBeenCalled();
 
-        await wrapper.find('[data-testid="confirm-delete-5"]').trigger('click');
+        await wrapper.find('[data-testid="confirm-deactivate-5"]').trigger('click');
         expect(deleteSpy).toHaveBeenCalledTimes(1);
         expect(deleteSpy.mock.calls[0][0]).toBe('tables.destroy/5');
+    });
+
+    it('closes the drawer once a save succeeds', async () => {
+        const wrapper = mountTables([]);
+
+        await wrapper.find('[data-testid="new-table"]').trigger('click');
+        await wrapper.find('[data-testid="field-label"]').setValue('Tisch 1');
+        await wrapper.find('form').trigger('submit');
+
+        expect(wrapper.find('[data-testid="table-form"]').exists()).toBe(true);
+
+        // Drive the Inertia onSuccess callback the router mock captured; it is
+        // what emits "saved" and lets the page close the drawer.
+        const options = postSpy.mock.calls[0][2] as { onSuccess: () => void };
+        options.onSuccess();
+        await flushPromises();
+
+        expect(wrapper.find('[data-testid="table-form"]').exists()).toBe(false);
     });
 });

@@ -38,9 +38,12 @@ const processing = ref(false);
 function payload(): TableFormPayload {
     return {
         label: form.label,
-        seats: form.seats,
+        // The ui Input is a wrapper component, so the v-model.number modifier is
+        // not applied automatically — coerce the numeric fields explicitly so
+        // the backend always receives integers, not numeric strings.
+        seats: Number(form.seats),
         room_tag: form.room_tag === '' ? null : form.room_tag,
-        sort_order: form.sort_order,
+        sort_order: Number(form.sort_order),
         active: form.active,
         combinable_with: form.combinable_with,
     };
@@ -48,6 +51,9 @@ function payload(): TableFormPayload {
 
 function submit(): void {
     processing.value = true;
+    // Drop any errors from a previous attempt so a now-valid field stops
+    // showing a stale message even if a different field fails.
+    errors.value = {};
     const options = {
         preserveScroll: true,
         onSuccess: () => emit('saved'),

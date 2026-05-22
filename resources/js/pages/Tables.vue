@@ -57,15 +57,17 @@ function onSaved(): void {
 
 const confirmingId = ref<number | null>(null);
 
-function requestDelete(table: TableModel): void {
+function requestDeactivate(table: TableModel): void {
     confirmingId.value = table.id;
 }
 
-function cancelDelete(): void {
+function cancelDeactivate(): void {
     confirmingId.value = null;
 }
 
-function confirmDelete(table: TableModel): void {
+// The destroy endpoint soft-deactivates the table (active = false) rather than
+// removing the row, so the UI consistently speaks of "deactivating".
+function confirmDeactivate(table: TableModel): void {
     router.delete(route('tables.destroy', { table: table.id }), {
         preserveScroll: true,
         onFinish: () => {
@@ -147,12 +149,12 @@ function confirmDelete(table: TableModel): void {
                                             type="button"
                                             variant="destructive"
                                             size="sm"
-                                            :data-testid="`confirm-delete-${table.id}`"
-                                            @click="confirmDelete(table)"
+                                            :data-testid="`confirm-deactivate-${table.id}`"
+                                            @click="confirmDeactivate(table)"
                                         >
                                             Ja
                                         </Button>
-                                        <Button type="button" variant="ghost" size="sm" class="ml-1" @click="cancelDelete">Abbrechen</Button>
+                                        <Button type="button" variant="ghost" size="sm" class="ml-1" @click="cancelDeactivate">Abbrechen</Button>
                                     </template>
                                     <template v-else>
                                         <Button type="button" variant="ghost" size="sm" :data-testid="`edit-${table.id}`" @click="openEdit(table)">
@@ -162,11 +164,11 @@ function confirmDelete(table: TableModel): void {
                                             type="button"
                                             variant="ghost"
                                             size="sm"
-                                            class="ml-1 text-destructive"
-                                            :data-testid="`delete-${table.id}`"
-                                            @click="requestDelete(table)"
+                                            class="ml-1"
+                                            :data-testid="`deactivate-${table.id}`"
+                                            @click="requestDeactivate(table)"
                                         >
-                                            Löschen
+                                            Deaktivieren
                                         </Button>
                                     </template>
                                 </td>
