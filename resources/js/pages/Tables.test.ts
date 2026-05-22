@@ -1,12 +1,15 @@
-import type { TableModel } from '@/types';
+import TableAvailabilityGrid from '@/components/tables/TableAvailabilityGrid.vue';
+import type { DayAvailability, TableModel } from '@/types';
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Tables from './Tables.vue';
 
-const { postSpy, patchSpy, deleteSpy } = vi.hoisted(() => ({
+const { postSpy, patchSpy, deleteSpy, getSpy, reloadSpy } = vi.hoisted(() => ({
     postSpy: vi.fn(),
     patchSpy: vi.fn(),
     deleteSpy: vi.fn(),
+    getSpy: vi.fn(),
+    reloadSpy: vi.fn(),
 }));
 
 vi.mock('@inertiajs/vue3', () => ({
@@ -15,6 +18,8 @@ vi.mock('@inertiajs/vue3', () => ({
         post: (...args: unknown[]) => postSpy(...args),
         patch: (...args: unknown[]) => patchSpy(...args),
         delete: (...args: unknown[]) => deleteSpy(...args),
+        get: (...args: unknown[]) => getSpy(...args),
+        reload: (...args: unknown[]) => reloadSpy(...args),
     },
 }));
 
@@ -54,6 +59,20 @@ function makeTable(overrides: Partial<TableModel> = {}): TableModel {
     };
 }
 
+function makeAvailability(overrides: Partial<DayAvailability> = {}): DayAvailability {
+    return {
+        date: '2026-06-15',
+        total_capacity: 12,
+        reserved_seats: 4,
+        slots: [
+            { time: '17:00', state: 'free', suggested_table_id: 1 },
+            { time: '17:30', state: 'tight', suggested_table_id: 1 },
+            { time: '18:00', state: 'full', suggested_table_id: null },
+        ],
+        ...overrides,
+    };
+}
+
 function mountTables(tables: TableModel[]) {
     return mount(Tables, {
         props: { tables: { data: tables } },
@@ -65,6 +84,8 @@ beforeEach(() => {
     postSpy.mockReset();
     patchSpy.mockReset();
     deleteSpy.mockReset();
+    getSpy.mockReset();
+    reloadSpy.mockReset();
 
     vi.stubGlobal('route', (name: string, params?: Record<string, unknown>) => (params ? `${name}/${Object.values(params).join('/')}` : name));
 });
@@ -91,15 +112,32 @@ describe('Tables.vue master-data tab', () => {
         expect(wrapper.findAll('[data-testid="table-row"]')).toHaveLength(0);
     });
 
-    it('switches to the Belegung placeholder tab', async () => {
+    it('navigates to the availability endpoint when the Belegung tab is clicked', async () => {
         const wrapper = mountTables([makeTable()]);
 
         expect(wrapper.find('[data-testid="tab-panel-stammdaten"]').exists()).toBe(true);
 
-        await wrapper.find('[data-testid="tab-belegung"]').trigger('click');
+        await wrapper.find('[data-testid="tab-availability"]').trigger('click');
 
-        expect(wrapper.find('[data-testid="tab-panel-belegung"]').exists()).toBe(true);
+        expect(getSpy).toHaveBeenCalledTimes(1);
+        expect(getSpy.mock.calls[0][0]).toBe('tables.availability');
+    });
+
+    it('renders the availability grid when the server marks the tab active', () => {
+        const wrapper = mount(Tables, {
+            props: {
+                tables: { data: [makeTable({ id: 1, label: 'Tisch 1' })] },
+                activeTab: 'availability',
+                availability: makeAvailability(),
+            },
+            global: { stubs: sheetStubs },
+        });
+
+        expect(wrapper.find('[data-testid="tab-panel-availability"]').exists()).toBe(true);
         expect(wrapper.find('[data-testid="tab-panel-stammdaten"]').exists()).toBe(false);
+        expect(wrapper.find('[data-testid="availability-grid"]').exists()).toBe(true);
+        // The "Neuer Tisch" button is master-data only.
+        expect(wrapper.find('[data-testid="new-table"]').exists()).toBe(false);
     });
 
     it('opens the drawer with empty fields for create', async () => {
@@ -182,5 +220,51 @@ describe('Tables.vue master-data tab', () => {
         await flushPromises();
 
         expect(wrapper.find('[data-testid="table-form"]').exists()).toBe(false);
+    });
+});
+
+describe('TableAvailabilityGrid', () => {
+    function mountGrid(availability: DayAvailability, tables: TableModel[] = [makeTable({ id: 1, label: 'Tisch 1' })]) {
+        return mount(TableAvailabilityGrid, { props: { tables, availability } });
+    }
+
+    it('renders one row per slot with the matching state', () => {
+        const wrapper = mountGrid(makeAvailability());
+
+        const slotRows = wrapper.findAll('[data-testid="slot-row"]');
+        expect(slotRows).toHaveLength(3);
+        expect(slotRows[0].attributes('data-state')).toBe('free');
+        expect(slotRows[1].attributes('data-state')).toBe('tight');
+        expect(slotRows[2].attributes('data-state')).toBe('full');
+        expect(wrapper.text()).toContain('17:00');
+        expect(wrapper.get('[data-testid="occupancy"]').text()).toContain('4 / 12');
+    });
+
+    it('resolves the suggested table to its label and shows a dash when none', () => {
+        const wrapper = mountGrid(makeAvailability());
+        const slotRows = wrapper.findAll('[data-testid="slot-row"]');
+
+        expect(slotRows[0].text()).toContain('Tisch 1');
+        expect(slotRows[2].text()).toContain('–');
+    });
+
+    it('shows the closed-day state when there are no slots', () => {
+        const wrapper = mountGrid(makeAvailability({ slots: [] }));
+
+        expect(wrapper.find('[data-testid="availability-empty"]').exists()).toBe(true);
+        expect(wrapper.findAll('[data-testid="slot-row"]')).toHaveLength(0);
+    });
+
+    it('reloads only the availability prop when the date changes', async () => {
+        const wrapper = mountGrid(makeAvailability());
+
+        // setValue on a date input updates the v-model and fires `change`.
+        await wrapper.get('[data-testid="availability-date"]').setValue('2026-06-20');
+
+        expect(reloadSpy).toHaveBeenCalledTimes(1);
+        expect(reloadSpy.mock.calls[0][0]).toMatchObject({
+            data: { date: '2026-06-20' },
+            only: ['availability'],
+        });
     });
 });

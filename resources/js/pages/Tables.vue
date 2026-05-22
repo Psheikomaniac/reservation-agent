@@ -1,23 +1,38 @@
 <script setup lang="ts">
+import TableAvailabilityGrid from '@/components/tables/TableAvailabilityGrid.vue';
 import TableForm from '@/components/tables/TableForm.vue';
 import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { type BreadcrumbItem, type TableModel } from '@/types';
+import { type BreadcrumbItem, type DayAvailability, type TableModel } from '@/types';
 import { Head, router } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 
+type TabKey = 'stammdaten' | 'availability';
+
 const props = defineProps<{
     tables: { data: TableModel[] };
+    // Server-driven: the availability endpoint sets activeTab='availability' and
+    // supplies the day grid; the index leaves both undefined (→ Stammdaten).
+    activeTab?: TabKey;
+    availability?: DayAvailability;
 }>();
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Tische', href: '/tables' }];
 
-type TabKey = 'stammdaten' | 'belegung';
 const tabs: Array<{ value: TabKey; label: string }> = [
     { value: 'stammdaten', label: 'Stammdaten' },
-    { value: 'belegung', label: 'Belegung' },
+    { value: 'availability', label: 'Belegung' },
 ];
-const activeTab = ref<TabKey>('stammdaten');
+const currentTab = computed<TabKey>(() => props.activeTab ?? 'stammdaten');
+
+// Each tab is its own server route, so switching is an Inertia GET that loads
+// the matching controller (index for master data, availability for the grid).
+function switchTab(tab: TabKey): void {
+    if (tab === currentTab.value) {
+        return;
+    }
+    router.get(tab === 'availability' ? route('tables.availability') : route('tables.index'));
+}
 
 const rows = computed(() => props.tables.data);
 const labelById = computed(() => new Map(rows.value.map((table) => [table.id, table.label])));
@@ -84,7 +99,7 @@ function confirmDeactivate(table: TableModel): void {
         <div class="flex flex-col gap-6 p-4 md:p-6">
             <header class="flex flex-wrap items-center justify-between gap-3">
                 <h1 class="text-2xl font-semibold tracking-tight">Tische</h1>
-                <Button type="button" data-testid="new-table" @click="openCreate">+ Neuer Tisch</Button>
+                <Button v-if="currentTab === 'stammdaten'" type="button" data-testid="new-table" @click="openCreate">+ Neuer Tisch</Button>
             </header>
 
             <div role="tablist" aria-label="Tisch-Ansicht" class="flex gap-2 border-b border-border">
@@ -93,22 +108,22 @@ function confirmDeactivate(table: TableModel): void {
                     :key="tab.value"
                     type="button"
                     role="tab"
-                    :aria-selected="activeTab === tab.value"
-                    :data-active="activeTab === tab.value"
+                    :aria-selected="currentTab === tab.value"
+                    :data-active="currentTab === tab.value"
                     :data-testid="`tab-${tab.value}`"
                     class="-mb-px border-b-2 px-3 py-2 text-sm transition"
                     :class="
-                        activeTab === tab.value
+                        currentTab === tab.value
                             ? 'border-primary font-medium text-primary'
                             : 'border-transparent text-muted-foreground hover:text-foreground'
                     "
-                    @click="activeTab = tab.value"
+                    @click="switchTab(tab.value)"
                 >
                     {{ tab.label }}
                 </button>
             </div>
 
-            <section v-if="activeTab === 'stammdaten'" data-testid="tab-panel-stammdaten">
+            <section v-if="currentTab === 'stammdaten'" data-testid="tab-panel-stammdaten">
                 <div v-if="rows.length === 0" class="rounded-lg border border-dashed p-10 text-center" data-testid="empty-state">
                     <p class="text-lg font-medium">Noch keine Tische angelegt.</p>
                     <p class="mt-1 text-sm text-muted-foreground">Lege deinen ersten Tisch an, um die Verfügbarkeit zu pflegen.</p>
@@ -178,9 +193,8 @@ function confirmDeactivate(table: TableModel): void {
                 </div>
             </section>
 
-            <section v-else data-testid="tab-panel-belegung" class="rounded-lg border border-dashed p-10 text-center">
-                <p class="text-lg font-medium">Belegungs-Ansicht folgt.</p>
-                <p class="mt-1 text-sm text-muted-foreground">Die Tages-Belegung wird in einem späteren Schritt ergänzt.</p>
+            <section v-else-if="currentTab === 'availability'" data-testid="tab-panel-availability">
+                <TableAvailabilityGrid v-if="availability" :tables="rows" :availability="availability" />
             </section>
         </div>
 
