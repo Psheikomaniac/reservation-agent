@@ -194,15 +194,104 @@ class SlotAvailabilityTest extends TestCase
         $this->assertNotNull($result->suggestedTableId);
     }
 
-    public function test_combination_and_alternative_slots_are_empty_in_this_task(): void
+    public function test_no_combination_when_a_single_table_already_fits(): void
     {
-        // forSlot in PRD-011 Task 5 returns a single-table suggestion only;
-        // combination logic (#314) and alternative slots (#315) land later.
+        // A single fitting table is suggested as suggestedTableId; the combination
+        // slot stays null. Alternative slots arrive in #315.
         Table::factory()->for($this->restaurant)->create(['seats' => 4]);
 
         $result = $this->slot('2026-06-15 19:00', partySize: 4);
 
         $this->assertNull($result->combination);
         $this->assertTrue($result->alternativeSlots->isEmpty());
+    }
+
+    public function test_suggest_combination_prefers_the_smallest_fitting_single_table(): void
+    {
+        Table::factory()->for($this->restaurant)->create(['seats' => 8, 'sort_order' => 1]);
+        $small = Table::factory()->for($this->restaurant)->create(['seats' => 4, 'sort_order' => 2]);
+
+        $combo = $this->service->suggestTableCombination(
+            $this->restaurant->id,
+            CarbonImmutable::parse('2026-06-15 19:00', 'UTC'),
+            partySize: 3,
+        );
+
+        $this->assertNotNull($combo);
+        $this->assertSame([$small->id], $combo->tableIds);
+        $this->assertSame($small->id, $combo->primaryTableId);
+        $this->assertSame(4, $combo->totalSeats);
+    }
+
+    public function test_suggest_combination_returns_a_two_table_combo_when_no_single_table_fits(): void
+    {
+        [$a, $b] = $this->combinablePair(4, 4);
+
+        $combo = $this->service->suggestTableCombination(
+            $this->restaurant->id,
+            CarbonImmutable::parse('2026-06-15 19:00', 'UTC'),
+            partySize: 6,
+        );
+
+        $this->assertNotNull($combo);
+        $this->assertCount(2, $combo->tableIds);
+        $this->assertEqualsCanonicalizing([$a->id, $b->id], $combo->tableIds);
+        $this->assertSame(8, $combo->totalSeats);
+    }
+
+    public function test_suggest_combination_returns_null_when_no_single_or_compatible_combo_fits(): void
+    {
+        // Two small tables that are NOT combinable with each other.
+        Table::factory()->for($this->restaurant)->create(['seats' => 2]);
+        Table::factory()->for($this->restaurant)->create(['seats' => 2]);
+
+        $combo = $this->service->suggestTableCombination(
+            $this->restaurant->id,
+            CarbonImmutable::parse('2026-06-15 19:00', 'UTC'),
+            partySize: 8,
+        );
+
+        $this->assertNull($combo);
+    }
+
+    public function test_suggest_combination_does_not_combine_a_busy_table(): void
+    {
+        [$a, $b] = $this->combinablePair(4, 4);
+        $this->occupy($a, '2026-06-15 19:00', ReservationStatus::Confirmed);
+
+        $combo = $this->service->suggestTableCombination(
+            $this->restaurant->id,
+            CarbonImmutable::parse('2026-06-15 19:00', 'UTC'),
+            partySize: 6,
+        );
+
+        $this->assertNull($combo);
+    }
+
+    public function test_for_slot_returns_a_combination_when_no_single_table_fits(): void
+    {
+        $this->combinablePair(4, 4);
+
+        $result = $this->slot('2026-06-15 19:00', partySize: 6);
+
+        $this->assertSame(SlotState::Free, $result->state);
+        $this->assertNotNull($result->combination);
+        $this->assertCount(2, $result->combination->tableIds);
+        $this->assertSame($result->combination->primaryTableId, $result->suggestedTableId);
+    }
+
+    /**
+     * Create two tables of the restaurant that can be combined with each other.
+     *
+     * @return array{0: Table, 1: Table}
+     */
+    private function combinablePair(int $seatsA, int $seatsB): array
+    {
+        $a = Table::factory()->for($this->restaurant)->create(['seats' => $seatsA, 'sort_order' => 1]);
+        $b = Table::factory()->for($this->restaurant)->create(['seats' => $seatsB, 'sort_order' => 2]);
+        $a->update(['combinable_with' => [$b->id]]);
+        $b->update(['combinable_with' => [$a->id]]);
+
+        return [$a, $b];
     }
 }
