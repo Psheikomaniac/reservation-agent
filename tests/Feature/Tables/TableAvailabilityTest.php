@@ -86,6 +86,21 @@ class TableAvailabilityTest extends TestCase
             ->assertSessionHasErrors('date');
     }
 
+    public function test_staff_may_view_availability(): void
+    {
+        [$restaurant] = $this->ownerWithRestaurant();
+        $staff = User::factory()->forRestaurant($restaurant)->create(['role' => UserRole::Staff]);
+        Table::factory()->for($restaurant)->create();
+
+        $this->actingAs($staff)
+            ->get(route('tables.availability', ['date' => '2026-06-15']))
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Tables')
+                ->where('activeTab', 'availability')
+            );
+    }
+
     public function test_user_without_a_restaurant_is_forbidden(): void
     {
         $user = User::factory()->create(); // restaurant_id is null
