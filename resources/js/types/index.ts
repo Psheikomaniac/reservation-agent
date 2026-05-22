@@ -112,6 +112,21 @@ export interface TableFormPayload {
     combinable_with: number[];
 }
 
+export type SlotState = 'free' | 'tight' | 'full';
+
+export interface AvailabilitySlot {
+    time: string;
+    state: SlotState;
+    suggested_table_id: number | null;
+}
+
+export interface DayAvailability {
+    date: string;
+    slots: AvailabilitySlot[];
+    total_capacity: number;
+    reserved_seats: number;
+}
+
 export interface DashboardFilters {
     status?: ReservationStatus[];
     source?: ReservationSource[];

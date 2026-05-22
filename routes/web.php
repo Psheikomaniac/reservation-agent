@@ -8,6 +8,7 @@ use App\Http\Controllers\ReservationMessagesController;
 use App\Http\Controllers\ReservationReplyController;
 use App\Http\Controllers\ReservationRequestController;
 use App\Http\Controllers\SendModeKillswitchController;
+use App\Http\Controllers\TableAvailabilityController;
 use App\Http\Controllers\TableController;
 use App\Models\Table;
 use Illuminate\Support\Facades\Route;
@@ -63,6 +64,10 @@ Route::post('reservation-replies/{reply}/mark-shadow-compared', [ReservationRepl
 Route::post('restaurants/{restaurant}/send-mode/killswitch', SendModeKillswitchController::class)
     ->middleware(['auth', 'verified', 'can:manageSendMode,restaurant'])
     ->name('restaurants.send-mode.killswitch');
+
+Route::get('tables/availability', [TableAvailabilityController::class, 'show'])
+    ->middleware(['auth', 'verified', 'can:viewAny,'.Table::class])
+    ->name('tables.availability');
 
 Route::get('tables', [TableController::class, 'index'])
     ->middleware(['auth', 'verified', 'can:viewAny,'.Table::class])
