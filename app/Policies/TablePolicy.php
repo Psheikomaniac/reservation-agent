@@ -27,6 +27,11 @@ final class TablePolicy
         return $this->belongsToSameRestaurant($user, $table);
     }
 
+    /**
+     * `create` has no table instance yet, so it can only gate by role +
+     * membership; the controller is responsible for assigning the table to the
+     * acting user's own restaurant_id (never trusting a client-supplied one).
+     */
     public function create(User $user): bool
     {
         return $user->restaurant_id !== null && $user->role === UserRole::Owner;

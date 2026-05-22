@@ -10,6 +10,7 @@ use App\Models\Table;
 use App\Models\User;
 use App\Policies\TablePolicy;
 use App\Providers\AuthServiceProvider;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Gate;
 use Tests\TestCase;
@@ -73,6 +74,17 @@ class TablePolicyTest extends TestCase
         $this->assertFalse($owner->can('view', $foreignTable));
         $this->assertFalse($owner->can('update', $foreignTable));
         $this->assertFalse($owner->can('delete', $foreignTable));
+    }
+
+    public function test_authorize_throws_for_foreign_table_access(): void
+    {
+        [$home, $foreign] = Restaurant::factory()->count(2)->create();
+        $owner = $this->owner($home);
+        $foreignTable = Table::factory()->for($foreign)->create();
+
+        $this->expectException(AuthorizationException::class);
+
+        Gate::forUser($owner)->authorize('update', $foreignTable);
     }
 
     public function test_guest_is_denied_all_table_actions(): void
