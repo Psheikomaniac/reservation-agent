@@ -402,6 +402,29 @@ class SlotAvailabilityTest extends TestCase
         $this->assertSame(SlotState::Free, $byTime->get('22:00')->state);
     }
 
+    public function test_for_day_generates_slots_in_the_restaurant_timezone(): void
+    {
+        // A non-UTC restaurant: slots must line up with the restaurant's local
+        // opening hours (via isOpenAt), not the input date's timezone.
+        $dinner = [['from' => '17:00', 'to' => '23:00']];
+        $restaurant = Restaurant::factory()->create([
+            'timezone' => 'Europe/Berlin',
+            'slot_buffer_minutes' => 90,
+            'opening_hours' => [
+                'mon' => $dinner, 'tue' => $dinner, 'wed' => $dinner, 'thu' => $dinner,
+                'fri' => $dinner, 'sat' => $dinner, 'sun' => $dinner,
+            ],
+        ]);
+        Table::factory()->for($restaurant)->create(['seats' => 4]);
+
+        $day = $this->service->forDay($restaurant->id, CarbonImmutable::parse('2026-06-15', 'UTC'));
+
+        $localTimes = $day->slots->map(fn ($slot) => $slot->slotStart->setTimezone('Europe/Berlin')->format('H:i'));
+        $this->assertCount(12, $day->slots);
+        $this->assertSame('17:00', $localTimes->first());
+        $this->assertSame('22:30', $localTimes->last());
+    }
+
     public function test_for_day_runs_a_bounded_number_of_queries(): void
     {
         Table::factory()->for($this->restaurant)->count(5)->create(['seats' => 4]);

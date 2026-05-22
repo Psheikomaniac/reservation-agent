@@ -128,17 +128,23 @@ final class SlotAvailability
         $buffer = (int) $restaurant->slot_buffer_minutes;
 
         $reservations = $this->dayReservations($restaurantId, $date, $buffer);
+        $openingHours = OpeningHours::fromRestaurant($restaurant);
 
+        // Walk the day in 30-min steps and keep the open ones. Delegating the
+        // open check to OpeningHours::isOpenAt (the same authority forSlot uses)
+        // keeps slot selection timezone-correct without re-deriving cursor times
+        // from the raw schedule strings.
         $slots = collect();
-        foreach (OpeningHours::fromRestaurant($restaurant)->blocksAt($date) as $window) {
-            $cursor = $date->setTimeFromTimeString($window['from']);
-            $close = $date->setTimeFromTimeString($window['to']);
+        $cursor = $date->startOfDay();
+        $endOfDay = $date->endOfDay();
 
-            while ($cursor->lt($close)) {
+        while ($cursor->lte($endOfDay)) {
+            if ($openingHours->isOpenAt($cursor)) {
                 $busyTableIds = $this->busyTableIdsFrom($reservations, $cursor, $buffer);
                 $slots->push($this->slotVerdict($tables, $busyTableIds, $cursor, partySize: 1));
-                $cursor = $cursor->addMinutes(self::SLOT_INCREMENT_MINUTES);
             }
+
+            $cursor = $cursor->addMinutes(self::SLOT_INCREMENT_MINUTES);
         }
 
         $reservedSeats = (int) $reservations
@@ -308,6 +314,8 @@ final class SlotAvailability
      * Active reservations (with table assignments) that could occupy any slot on
      * `$date`, loaded in one query. The window is padded by buffer + duration on
      * both sides so reservations spilling in from the adjacent days are included.
+     * Bounds are intentionally inclusive (a deliberate over-fetch); the precise
+     * half-open occupancy window is applied per slot by busyTableIdsFrom().
      *
      * @return Collection<int, ReservationRequest>
      */
