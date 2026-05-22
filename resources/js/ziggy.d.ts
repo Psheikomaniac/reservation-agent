@@ -52,6 +52,23 @@ declare module 'ziggy-js' {
             "binding": "id"
         }
     ],
+    "tables.availability": [],
+    "tables.index": [],
+    "tables.store": [],
+    "tables.update": [
+        {
+            "name": "table",
+            "required": true,
+            "binding": "id"
+        }
+    ],
+    "tables.destroy": [
+        {
+            "name": "table",
+            "required": true,
+            "binding": "id"
+        }
+    ],
     "public.reservations.create": [
         {
             "name": "restaurant",

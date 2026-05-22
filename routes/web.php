@@ -8,6 +8,9 @@ use App\Http\Controllers\ReservationMessagesController;
 use App\Http\Controllers\ReservationReplyController;
 use App\Http\Controllers\ReservationRequestController;
 use App\Http\Controllers\SendModeKillswitchController;
+use App\Http\Controllers\TableAvailabilityController;
+use App\Http\Controllers\TableController;
+use App\Models\Table;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -61,6 +64,28 @@ Route::post('reservation-replies/{reply}/mark-shadow-compared', [ReservationRepl
 Route::post('restaurants/{restaurant}/send-mode/killswitch', SendModeKillswitchController::class)
     ->middleware(['auth', 'verified', 'can:manageSendMode,restaurant'])
     ->name('restaurants.send-mode.killswitch');
+
+Route::get('tables/availability', [TableAvailabilityController::class, 'show'])
+    ->middleware(['auth', 'verified', 'can:viewAny,'.Table::class])
+    ->name('tables.availability');
+
+Route::get('tables', [TableController::class, 'index'])
+    ->middleware(['auth', 'verified', 'can:viewAny,'.Table::class])
+    ->name('tables.index');
+
+Route::post('tables', [TableController::class, 'store'])
+    ->middleware(['auth', 'verified', 'can:create,'.Table::class])
+    ->name('tables.store');
+
+Route::match(['put', 'patch'], 'tables/{table}', [TableController::class, 'update'])
+    ->whereNumber('table')
+    ->middleware(['auth', 'verified', 'can:update,table'])
+    ->name('tables.update');
+
+Route::delete('tables/{table}', [TableController::class, 'destroy'])
+    ->whereNumber('table')
+    ->middleware(['auth', 'verified', 'can:delete,table'])
+    ->name('tables.destroy');
 
 Route::get('r/{restaurant:slug}/reservations', [PublicReservationController::class, 'create'])
     ->name('public.reservations.create');

@@ -52,3 +52,11 @@ Wird ein Trigger ausgelöst, ist die Entscheidung "WebSockets aktivieren" binnen
 - Konkrete Reverb-Konfiguration (eigenes PRD/Issue sobald Trigger greift)
 - Pusher als Hosted-Alternative (verworfen — Reverb ist Laravel-Erstanbieter, keine zusätzliche Vendor-Abhängigkeit nötig)
 - Server-Sent Events (SSE) als Mittelweg (verworfen — adressiert dieselben Pain Points wie WebSockets, ohne deren Bidirektionalität zu nutzen, und Laravel hat keinen Erstanbieter-Stack dafür)
+
+## Update Mai 2026 – Reverb-Einführung von V3 nach V4 verschoben
+
+Die April-2026-Roadmap hatte Reverb als „PRD-014 V3.0, beschränkt auf neue V3-Surfaces" geplant. Im V3-Brainstorming am 2026-05-01 (siehe [`superpowers/specs/2026-05-01-v3-scope-sharpened-design.md`](../superpowers/specs/2026-05-01-v3-scope-sharpened-design.md)) wurde der Reverb-Slot in V3 freigeräumt (PRD-014 ist jetzt „Sync-Web-Confirm") und die Reverb-Einführung nach **V4 als PRD-021 (Reverb breit, alle Surfaces)** verschoben.
+
+**Begründung:** Der V3-Begleitnutzer ist ein einzelnes befreundetes Restaurant mit Inhaber-Bedienung. Ein Tab, ein Bediener — Polling reicht und keiner der vier Trigger weiter oben greift. Reverb-Operations-Last (eigener Daemon, Channel-Auth, Reconnect-Strategie, Monitoring) zahlt sich erst aus, wenn ≥ 2 Pilot-Restaurants × parallele Service-Bedienung aktiv sind. Genau dort wird PRD-021 in V4 ansetzen.
+
+**Folgen für diese Entscheidung:** keine. Die vier Trigger-Schwellen oben bleiben verbindlich. Sobald einer greift, wird PRD-021 vorgezogen — egal in welcher Version.

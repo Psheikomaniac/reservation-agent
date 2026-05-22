@@ -87,9 +87,10 @@ class OpenAi401AdminNotificationTest extends TestCase
             'request' => ['guest_name' => 'X', 'party_size' => 2, 'desired_at' => '2026-05-13 19:00', 'message' => null],
             'availability' => [
                 'is_open_at_desired_time' => true,
-                'seats_free_at_desired' => 4,
-                'alternative_slots' => [],
                 'closed_reason' => null,
+                'slot_state' => 'free',
+                'is_available' => true,
+                'alternative_slots' => [],
             ],
         ]);
 

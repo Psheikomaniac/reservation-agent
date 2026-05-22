@@ -83,3 +83,12 @@ Diese Entscheidung hat in ihrer ursprünglichen Fassung die Betroffenen-Löschan
 **Begründung:** Die 30-Tage-Auto-Löschung aus dieser Entscheidung erfüllt Art. 17 DSGVO bereits ohne UI – Betroffene können einen Löschantrag heute schon manuell durch den Restaurant-Owner per Tinker oder DB-Query bearbeiten lassen. Eine eigene UI ist Komfort, kein Compliance-Engpass. Die Verschiebung schiebt also keine rechtliche Pflicht auf.
 
 **Folgen für diese Entscheidung:** keine. Die Retention-Logik (30 Tage, hart) und das Audit-Log bleiben unverändert. Nur der „Nicht in diesem Dokument"-Hinweis ändert seine Versionsangabe.
+
+## Update Mai 2026 – Schärfung des V3-DSGVO-Umfangs
+
+Das im Update April 2026 erwähnte „DSGVO-UI in V3.0" ist im V3-Brainstorming am 2026-05-01 (siehe [`superpowers/specs/2026-05-01-v3-scope-sharpened-design.md`](../superpowers/specs/2026-05-01-v3-scope-sharpened-design.md)) auf die zwei in der Gastro-Praxis tatsächlich relevanten Artikel reduziert worden:
+
+- **V3.0 (PRD-015):** Art. 15 (Auskunft) + Art. 17 (Löschung) als Endkunden-Self-Service per signed Link in der Bestätigungs-Mail. Im Dashboard bekommt der Owner eine Bulk-Lösch-Funktion auf E-Mail-Treffer.
+- **V4.0 (PRD-022):** Art. 16 (Berichtigung), Art. 18 (Einschränkung), Art. 20 (Übertragbarkeit), Art. 21 (Widerspruch), Art. 22 (Automatisierte Entscheidung). Voraussetzung: Stammgast-Profil aus PRD-016 existiert, sodass „alle Daten zu Person X" eine sinnvolle Aggregation ergibt.
+
+**Folgen für diese Entscheidung:** weiterhin keine. Die 30-Tage-Auto-Löschung aus `failed_email_imports` erfüllt Art. 17 DSGVO unverändert. PRD-015 ergänzt eine **vorzeitige Löschung auf Anforderung** und eine **Auskunfts-Sicht**, betrifft aber `reservation_requests`, nicht die Quarantäne-Tabelle.
