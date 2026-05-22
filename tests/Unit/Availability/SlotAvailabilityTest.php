@@ -10,6 +10,7 @@ use App\Models\ReservationRequest;
 use App\Models\ReservationTableAssignment;
 use App\Models\Restaurant;
 use App\Models\Table;
+use App\Models\User;
 use App\Services\Availability\DTOs\SlotAvailabilityResult;
 use App\Services\Availability\SlotAvailability;
 use Carbon\CarbonImmutable;
@@ -162,6 +163,35 @@ class SlotAvailabilityTest extends TestCase
 
         $this->assertSame(SlotState::Tight, $result->state);
         $this->assertSame($tables[3]->id, $result->suggestedTableId);
+    }
+
+    public function test_a_reservation_exactly_on_the_window_edge_does_not_occupy_the_slot(): void
+    {
+        // Window for a 19:00 slot with 90-min buffer + 90-min duration ends at
+        // 22:00. A 22:00 reservation's footprint starts at 20:30 and only touches
+        // the slot's 20:30 end (half-open intervals), so it must not block 19:00.
+        $table = Table::factory()->for($this->restaurant)->create(['seats' => 4]);
+        $this->occupy($table, '2026-06-15 22:00', ReservationStatus::Confirmed);
+
+        $result = $this->slot('2026-06-15 19:00', partySize: 4);
+
+        $this->assertSame(SlotState::Free, $result->state);
+        $this->assertSame($table->id, $result->suggestedTableId);
+    }
+
+    public function test_result_is_independent_of_the_authenticated_users_restaurant(): void
+    {
+        // A deterministic availability service must ignore the tenant global scope:
+        // a logged-in user from a *different* restaurant must not make this
+        // restaurant's free table disappear (which the RestaurantScope would do).
+        Table::factory()->for($this->restaurant)->create(['seats' => 4]);
+        $otherRestaurant = Restaurant::factory()->create();
+        $this->actingAs(User::factory()->forRestaurant($otherRestaurant)->create());
+
+        $result = $this->slot('2026-06-15 19:00', partySize: 4);
+
+        $this->assertSame(SlotState::Free, $result->state);
+        $this->assertNotNull($result->suggestedTableId);
     }
 
     public function test_combination_and_alternative_slots_are_empty_in_this_task(): void

@@ -18,12 +18,17 @@ use Illuminate\Support\Collection;
  * Deterministic table-availability for a restaurant (PRD-011).
  *
  * This is the single source of truth for "is this slot free/tight/full"; the AI
- * never decides availability, it only phrases the result. Occupancy is computed
- * per table from active reservations, buffer-aware: a reservation at `desired_at`
- * blocks its table for `[desired_at - buffer, desired_at + slot_duration + buffer]`.
- * Slot duration is a fixed 90 min in V3 (per-restaurant configurability is a
- * documented PRD-011 follow-up). Single-table suggestion only in this task;
- * combinations (#314) and alternative slots (#315) extend this service later.
+ * never decides availability, it only phrases the result. The result depends only
+ * on the passed `$restaurantId`, never on the authenticated user — the queries
+ * bypass the tenant RestaurantScope and scope by `$restaurantId` explicitly, so
+ * availability is identical from a web request, a queued job, or the console.
+ *
+ * Occupancy is computed per table from active reservations, buffer-aware: a
+ * reservation at `desired_at` occupies its table over the half-open footprint
+ * `[desired_at - buffer, desired_at + slot_duration + buffer)`. Slot duration is
+ * a fixed 90 min in V3 (per-restaurant configurability is a documented PRD-011
+ * follow-up). Single-table suggestion only in this task; combinations (#314) and
+ * alternative slots (#315) extend this service later.
  */
 final class SlotAvailability
 {
@@ -51,7 +56,7 @@ final class SlotAvailability
             return $this->fullResult($datetime);
         }
 
-        $tables = $restaurant->tables()->where('active', true)->get();
+        $tables = $restaurant->tables()->withoutGlobalScopes()->where('active', true)->get();
         if ($tables->isEmpty()) {
             return $this->fullResult($datetime);
         }
@@ -84,8 +89,11 @@ final class SlotAvailability
     /**
      * Table ids occupied by an active reservation overlapping the buffered slot.
      *
-     * A reservation overlaps the requested slot when its `desired_at` falls in
-     * `[datetime - (buffer + duration), datetime + (duration + buffer)]`.
+     * With half-open footprints, a reservation overlaps the requested slot iff its
+     * `desired_at` lies strictly inside `(datetime - (buffer + duration), datetime
+     * + (duration + buffer))`; a reservation sitting exactly on a bound only
+     * touches the slot edge and does not occupy it. Queries bypass the tenant
+     * global scope so the result is independent of the authenticated user.
      *
      * @return Collection<int, int>
      */
@@ -95,10 +103,12 @@ final class SlotAvailability
         $windowEnd = $datetime->addMinutes(self::SLOT_DURATION_MINUTES + $bufferMinutes);
 
         return ReservationRequest::query()
+            ->withoutGlobalScopes()
             ->where('restaurant_id', $restaurantId)
             ->whereIn('status', array_map(fn (ReservationStatus $status): string => $status->value, self::OCCUPYING_STATUSES))
-            ->whereBetween('desired_at', [$windowStart, $windowEnd])
-            ->with('tableAssignments:id,reservation_request_id,table_id')
+            ->where('desired_at', '>', $windowStart)
+            ->where('desired_at', '<', $windowEnd)
+            ->with(['tableAssignments' => fn ($query) => $query->withoutGlobalScopes()->select('id', 'reservation_request_id', 'table_id')])
             ->get()
             ->flatMap(fn (ReservationRequest $reservation): Collection => $reservation->tableAssignments->pluck('table_id'))
             ->unique()
