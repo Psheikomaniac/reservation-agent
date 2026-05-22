@@ -108,11 +108,20 @@ final class SlotAvailability
     /**
      * Active tables of the restaurant, independent of the tenant global scope.
      *
+     * Ordered by `sort_order` then `id` so that downstream tie-breaks — most
+     * notably which table becomes the primary of a symmetric combination — are
+     * deterministic regardless of database row order or engine.
+     *
      * @return Collection<int, Table>
      */
     private function activeTables(Restaurant $restaurant): Collection
     {
-        return $restaurant->tables()->withoutGlobalScopes()->where('active', true)->get();
+        return $restaurant->tables()
+            ->withoutGlobalScopes()
+            ->where('active', true)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
     }
 
     /**

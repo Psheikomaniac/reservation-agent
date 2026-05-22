@@ -237,6 +237,8 @@ class SlotAvailabilityTest extends TestCase
         $this->assertCount(2, $combo->tableIds);
         $this->assertEqualsCanonicalizing([$a->id, $b->id], $combo->tableIds);
         $this->assertSame(8, $combo->totalSeats);
+        // Lower sort_order wins the primary slot deterministically (a before b).
+        $this->assertSame($a->id, $combo->primaryTableId);
     }
 
     public function test_suggest_combination_returns_null_when_no_single_or_compatible_combo_fits(): void
@@ -270,13 +272,14 @@ class SlotAvailabilityTest extends TestCase
 
     public function test_for_slot_returns_a_combination_when_no_single_table_fits(): void
     {
-        $this->combinablePair(4, 4);
+        [$a] = $this->combinablePair(4, 4);
 
         $result = $this->slot('2026-06-15 19:00', partySize: 6);
 
         $this->assertSame(SlotState::Free, $result->state);
         $this->assertNotNull($result->combination);
         $this->assertCount(2, $result->combination->tableIds);
+        $this->assertSame($a->id, $result->combination->primaryTableId);
         $this->assertSame($result->combination->primaryTableId, $result->suggestedTableId);
     }
 
