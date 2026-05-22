@@ -82,15 +82,33 @@ describe('Reservations/Quick.vue', () => {
         mountQuick();
 
         await wrapper.get('[data-testid="field-date"]').setValue('2026-06-20');
-        expect(reloadSpy).not.toHaveBeenCalled(); // still inside the 250ms debounce
 
-        await vi.advanceTimersByTimeAsync(250);
+        await vi.advanceTimersByTimeAsync(249);
+        expect(reloadSpy).not.toHaveBeenCalled(); // still inside the 250ms debounce window
 
+        await vi.advanceTimersByTimeAsync(1);
         expect(reloadSpy).toHaveBeenCalledTimes(1);
         expect(reloadSpy.mock.calls[0][0]).toMatchObject({
             only: ['availability'],
             data: { date: '2026-06-20', time: '19:00', party_size: 2 },
         });
+    });
+
+    it('coerces party_size to a number in the availability reload and skips it while cleared', async () => {
+        mountQuick();
+
+        // The wrapper <Input>'s v-model.number is a no-op, so the form holds a
+        // string; the reload must coerce it back to a number.
+        await wrapper.get('[data-testid="field-party-size"]').setValue('5');
+        await vi.advanceTimersByTimeAsync(250);
+        expect(reloadSpy).toHaveBeenCalledTimes(1);
+        expect(reloadSpy.mock.calls[0][0].data.party_size).toBe(5);
+
+        // Clearing the field must not fire a reload with an empty/zero party size.
+        reloadSpy.mockClear();
+        await wrapper.get('[data-testid="field-party-size"]').setValue('');
+        await vi.advanceTimersByTimeAsync(250);
+        expect(reloadSpy).not.toHaveBeenCalled();
     });
 
     it('submits via router.post on Ctrl+Enter', async () => {
@@ -103,10 +121,39 @@ describe('Reservations/Quick.vue', () => {
         expect(postSpy.mock.calls[0][0]).toBe('reservations.quick.store');
         expect(postSpy.mock.calls[0][1]).toMatchObject({
             source: 'phone',
-            guest_name: 'Müller',
+            date: '2026-06-15',
+            time: '19:00',
             party_size: 2,
+            guest_name: 'Müller',
+            // Empty optional fields are coerced to null, not '' .
+            guest_phone: null,
+            guest_email: null,
+            note: null,
             table_id: null,
         });
+    });
+
+    it('ignores a second Ctrl+Enter while a submit is in flight', async () => {
+        mountQuick();
+        await wrapper.get('[data-testid="field-name"]').setValue('Müller');
+
+        // The mocked router.post never resolves onFinish, so processing stays true.
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true }));
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true }));
+
+        expect(postSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('submits a manually chosen table override as a numeric id', async () => {
+        mountQuick({ tables: [makeTable({ id: 7, label: '7' }), makeTable({ id: 9, label: '9' })] });
+        await wrapper.get('[data-testid="field-name"]').setValue('Müller');
+
+        // Native <select> with :value="table.id": Vue returns the bound number,
+        // not the string "9" — this is the path the #344 review flagged.
+        await wrapper.get('[data-testid="field-table"]').setValue('9');
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true }));
+
+        expect(postSpy.mock.calls[0][1].table_id).toBe(9);
     });
 
     it('cancels without confirmation when the form is pristine', () => {
