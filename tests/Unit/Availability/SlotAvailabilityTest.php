@@ -341,6 +341,21 @@ class SlotAvailabilityTest extends TestCase
         $this->assertTrue($result->alternativeSlots->isEmpty());
     }
 
+    public function test_alternative_slots_do_not_cross_the_local_day_boundary(): void
+    {
+        // Late slot in the restaurant's own timezone: the search must stop at the
+        // restaurant's local midnight rather than walking into the next day.
+        $table = Table::factory()->for($this->restaurant)->create(['seats' => 4]);
+        $this->occupy($table, '2026-06-15 22:30', ReservationStatus::Confirmed);
+
+        // 22:30 is full (its own booking); 23:00 is closing time. There is no
+        // later open slot today, so no alternatives — none roll over to tomorrow.
+        $result = $this->slot('2026-06-15 22:30', partySize: 4);
+
+        $this->assertSame(SlotState::Full, $result->state);
+        $this->assertTrue($result->alternativeSlots->isEmpty());
+    }
+
     /**
      * Create two tables of the restaurant that can be combined with each other.
      *
