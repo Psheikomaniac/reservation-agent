@@ -28,7 +28,7 @@ import {
     type ThreadMessage,
 } from '@/types';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { ChevronDown, Info } from 'lucide-vue-next';
+import { ChevronDown, Info, Phone } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 
 const POLL_MS = 30_000;
@@ -514,18 +514,31 @@ useReservationDiffTrigger(dashboardRowIds, dashboardFilters, notifications);
                     <p class="text-sm text-muted-foreground">Reservierungs-Dashboard</p>
                 </div>
 
-                <div class="flex flex-wrap items-center gap-3 text-sm" data-testid="dashboard-stats">
-                    <span
-                        class="rounded-md border border-blue-200 bg-blue-50 px-3 py-1 text-blue-900 dark:border-blue-900/40 dark:bg-blue-950/40 dark:text-blue-200"
+                <div class="flex flex-wrap items-center gap-3">
+                    <!-- The primary action for the owner-on-the-phone: log a phone/walk-in
+                         reservation. Kept a prominent button, not buried in a dropdown. -->
+                    <Link
+                        :href="route('reservations.quick.create')"
+                        class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+                        data-testid="quick-reservation-link"
                     >
-                        Neu: <strong>{{ props.stats.new }}</strong>
-                    </span>
-                    <span
-                        class="rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1 text-indigo-900 dark:border-indigo-900/40 dark:bg-indigo-950/40 dark:text-indigo-200"
-                    >
-                        In Bearbeitung: <strong>{{ props.stats.in_review }}</strong>
-                    </span>
-                    <DashboardExportDropdown :filters="props.filters" />
+                        <Phone class="size-4" />
+                        Telefon-Reservierung
+                    </Link>
+
+                    <div class="flex flex-wrap items-center gap-3 text-sm" data-testid="dashboard-stats">
+                        <span
+                            class="rounded-md border border-blue-200 bg-blue-50 px-3 py-1 text-blue-900 dark:border-blue-900/40 dark:bg-blue-950/40 dark:text-blue-200"
+                        >
+                            Neu: <strong>{{ props.stats.new }}</strong>
+                        </span>
+                        <span
+                            class="rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1 text-indigo-900 dark:border-indigo-900/40 dark:bg-indigo-950/40 dark:text-indigo-200"
+                        >
+                            In Bearbeitung: <strong>{{ props.stats.in_review }}</strong>
+                        </span>
+                        <DashboardExportDropdown :filters="props.filters" />
+                    </div>
                 </div>
             </header>
 
