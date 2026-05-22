@@ -73,8 +73,9 @@ final class ReservationContextBuilder
 
     /**
      * Table-level availability for the desired slot, mapped from
-     * {@see SlotAvailability::forSlot}. When `desired_at` is missing we report an
-     * unavailable, stateless slot so the AI falls back to manual handling.
+     * SlotAvailability::forSlot. When `desired_at` is missing we report an
+     * unavailable slot (`slot_state` = `full`) so the AI falls back to manual
+     * handling.
      *
      * @return array{slot_state: string, is_available: bool, alternative_slots: list<string>}
      */

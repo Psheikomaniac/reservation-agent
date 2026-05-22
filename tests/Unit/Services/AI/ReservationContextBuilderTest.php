@@ -85,6 +85,37 @@ class ReservationContextBuilderTest extends TestCase
         $this->assertFalse($context['availability']['is_available']);
     }
 
+    public function test_it_reports_tight_when_load_is_high_but_a_table_remains(): void
+    {
+        // Half-full case (CLAUDE.md: voller/halber/leerer Auslastung): 4 tables x 4
+        // = 16 seats, three booked at the desired time leaves 25 % → tight, but a
+        // table still fits the party so the slot stays available.
+        $restaurant = Restaurant::factory()->create(['timezone' => 'Europe/Berlin']);
+        $tables = Table::factory()->for($restaurant)->count(4)->create(['seats' => 4]);
+        $desiredAt = Carbon::parse('2026-05-13 19:30', 'Europe/Berlin')->utc();
+        foreach ([0, 1, 2] as $i) {
+            $booking = ReservationRequest::factory()->forRestaurant($restaurant)->create([
+                'status' => ReservationStatus::Confirmed,
+                'party_size' => 4,
+                'desired_at' => $desiredAt,
+            ]);
+            ReservationTableAssignment::factory()
+                ->for($booking, 'reservationRequest')
+                ->for($tables[$i])
+                ->create();
+        }
+
+        $request = ReservationRequest::factory()->forRestaurant($restaurant)->create([
+            'party_size' => 2,
+            'desired_at' => $desiredAt,
+        ]);
+
+        $context = $this->builder->build($request);
+
+        $this->assertSame('tight', $context['availability']['slot_state']);
+        $this->assertTrue($context['availability']['is_available']);
+    }
+
     public function test_it_flags_outside_opening_hours_as_closed_reason(): void
     {
         $restaurant = Restaurant::factory()->create(['timezone' => 'Europe/Berlin']);
