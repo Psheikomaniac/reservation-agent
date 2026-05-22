@@ -15,6 +15,7 @@ use App\Services\Availability\DTOs\SlotAvailabilityResult;
 use App\Services\Availability\SlotAvailability;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class SlotAvailabilityTest extends TestCase
@@ -354,6 +355,69 @@ class SlotAvailabilityTest extends TestCase
 
         $this->assertSame(SlotState::Full, $result->state);
         $this->assertTrue($result->alternativeSlots->isEmpty());
+    }
+
+    public function test_for_day_returns_one_slot_per_30_minutes_within_opening_hours(): void
+    {
+        Table::factory()->for($this->restaurant)->create(['seats' => 4]);
+
+        $day = $this->service->forDay($this->restaurant->id, CarbonImmutable::parse('2026-06-15', 'UTC'));
+
+        // 17:00-23:00 in 30-min steps = 12 slots.
+        $this->assertCount(12, $day->slots);
+        $this->assertSame('17:00', $day->slots->first()->slotStart->format('H:i'));
+        $this->assertSame('22:30', $day->slots->last()->slotStart->format('H:i'));
+        $this->assertSame('2026-06-15', $day->date->toDateString());
+    }
+
+    public function test_for_day_computes_total_capacity_and_reserved_seats(): void
+    {
+        Table::factory()->for($this->restaurant)->count(2)->create(['seats' => 4]);
+        $reservation = ReservationRequest::factory()->for($this->restaurant)->create([
+            'desired_at' => CarbonImmutable::parse('2026-06-15 19:00', 'UTC'),
+            'party_size' => 3,
+            'status' => ReservationStatus::Confirmed,
+        ]);
+        ReservationTableAssignment::factory()
+            ->for($reservation, 'reservationRequest')
+            ->for(Table::query()->first())
+            ->create();
+
+        $day = $this->service->forDay($this->restaurant->id, CarbonImmutable::parse('2026-06-15', 'UTC'));
+
+        $this->assertSame(8, $day->totalCapacity);
+        $this->assertSame(3, $day->reservedSeats);
+    }
+
+    public function test_for_day_marks_individual_slots_busy_from_loaded_reservations(): void
+    {
+        $table = Table::factory()->for($this->restaurant)->create(['seats' => 4]);
+        $this->occupy($table, '2026-06-15 19:00', ReservationStatus::Confirmed);
+
+        $day = $this->service->forDay($this->restaurant->id, CarbonImmutable::parse('2026-06-15', 'UTC'));
+        $byTime = $day->slots->keyBy(fn ($slot) => $slot->slotStart->format('H:i'));
+
+        $this->assertSame(SlotState::Full, $byTime->get('19:00')->state);
+        // 22:00 is past the buffered footprint of the 19:00 booking.
+        $this->assertSame(SlotState::Free, $byTime->get('22:00')->state);
+    }
+
+    public function test_for_day_runs_a_bounded_number_of_queries(): void
+    {
+        Table::factory()->for($this->restaurant)->count(5)->create(['seats' => 4]);
+        ReservationRequest::factory()->for($this->restaurant)->count(20)->create([
+            'desired_at' => CarbonImmutable::parse('2026-06-15 19:00', 'UTC'),
+            'party_size' => 2,
+            'status' => ReservationStatus::Confirmed,
+        ]);
+
+        DB::enableQueryLog();
+        $this->service->forDay($this->restaurant->id, CarbonImmutable::parse('2026-06-15', 'UTC'));
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        // restaurant + tables + reservations + eager assignments, no per-slot N+1.
+        $this->assertLessThanOrEqual(4, count($queries));
     }
 
     /**
