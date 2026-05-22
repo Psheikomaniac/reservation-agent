@@ -9,6 +9,7 @@ use App\Enums\SlotState;
 use App\Models\ReservationRequest;
 use App\Models\Restaurant;
 use App\Models\Table;
+use App\Services\Availability\DTOs\DayAvailability;
 use App\Services\Availability\DTOs\SlotAvailabilityResult;
 use App\Services\Availability\DTOs\TableCombination;
 use App\Support\OpeningHours;
@@ -113,7 +114,54 @@ final class SlotAvailability
     }
 
     /**
-     * Evaluate one slot against pre-resolved restaurant + active tables.
+     * Full-day occupancy grid: one slot per 30 minutes within opening hours,
+     * each evaluated for a party of one (table-level occupancy, not party fit).
+     *
+     * Loads the restaurant, its active tables and the day's active reservations
+     * once and evaluates every slot in memory, so the whole grid costs a bounded
+     * number of queries rather than one per slot.
+     */
+    public function forDay(int $restaurantId, CarbonImmutable $date): DayAvailability
+    {
+        $restaurant = Restaurant::query()->findOrFail($restaurantId);
+        $tables = $this->activeTables($restaurant);
+        $buffer = (int) $restaurant->slot_buffer_minutes;
+
+        $reservations = $this->dayReservations($restaurantId, $date, $buffer);
+        $openingHours = OpeningHours::fromRestaurant($restaurant);
+
+        // Walk the day in 30-min steps and keep the open ones. Delegating the
+        // open check to OpeningHours::isOpenAt (the same authority forSlot uses)
+        // keeps slot selection timezone-correct without re-deriving cursor times
+        // from the raw schedule strings.
+        $slots = collect();
+        $cursor = $date->startOfDay();
+        $endOfDay = $date->endOfDay();
+
+        while ($cursor->lte($endOfDay)) {
+            if ($openingHours->isOpenAt($cursor)) {
+                $busyTableIds = $this->busyTableIdsFrom($reservations, $cursor, $buffer);
+                $slots->push($this->slotVerdict($tables, $busyTableIds, $cursor, partySize: 1));
+            }
+
+            $cursor = $cursor->addMinutes(self::SLOT_INCREMENT_MINUTES);
+        }
+
+        $reservedSeats = (int) $reservations
+            ->filter(fn (ReservationRequest $reservation): bool => $reservation->desired_at->toDateString() === $date->toDateString())
+            ->sum('party_size');
+
+        return new DayAvailability(
+            date: $date->startOfDay(),
+            slots: $slots,
+            totalCapacity: (int) $tables->sum('seats'),
+            reservedSeats: $reservedSeats,
+        );
+    }
+
+    /**
+     * Evaluate one slot against pre-resolved restaurant + active tables, running
+     * its own per-slot occupancy query.
      *
      * Kept free of recursion (never calls the alternative search) so callers can
      * loop over many candidates cheaply: only the per-slot occupancy query runs
@@ -127,11 +175,24 @@ final class SlotAvailability
             return $this->fullResult($datetime);
         }
 
+        $busyTableIds = $this->busyTableIds($restaurant->id, $datetime, (int) $restaurant->slot_buffer_minutes);
+
+        return $this->slotVerdict($tables, $busyTableIds, $datetime, $partySize);
+    }
+
+    /**
+     * Pure free/tight/full verdict for a slot given pre-resolved tables and the
+     * table ids busy at that slot. No queries — safe to call in a tight loop.
+     *
+     * @param  Collection<int, Table>  $tables
+     * @param  Collection<int, int>  $busyTableIds
+     */
+    private function slotVerdict(Collection $tables, Collection $busyTableIds, CarbonImmutable $datetime, int $partySize): SlotAvailabilityResult
+    {
         if ($tables->isEmpty()) {
             return $this->fullResult($datetime);
         }
 
-        $busyTableIds = $this->busyTableIds($restaurant->id, $datetime, (int) $restaurant->slot_buffer_minutes);
         $freeTables = $tables->reject(fn (Table $table): bool => $busyTableIds->contains($table->id));
 
         $totalCapacity = (int) $tables->sum('seats');
@@ -244,6 +305,49 @@ final class SlotAvailability
             ->where('desired_at', '<', $windowEnd)
             ->with(['tableAssignments' => fn ($query) => $query->withoutGlobalScopes()->select('id', 'reservation_request_id', 'table_id')])
             ->get()
+            ->flatMap(fn (ReservationRequest $reservation): Collection => $reservation->tableAssignments->pluck('table_id'))
+            ->unique()
+            ->values();
+    }
+
+    /**
+     * Active reservations (with table assignments) that could occupy any slot on
+     * `$date`, loaded in one query. The window is padded by buffer + duration on
+     * both sides so reservations spilling in from the adjacent days are included.
+     * Bounds are intentionally inclusive (a deliberate over-fetch); the precise
+     * half-open occupancy window is applied per slot by busyTableIdsFrom().
+     *
+     * @return Collection<int, ReservationRequest>
+     */
+    private function dayReservations(int $restaurantId, CarbonImmutable $date, int $bufferMinutes): Collection
+    {
+        $margin = $bufferMinutes + self::SLOT_DURATION_MINUTES;
+
+        return ReservationRequest::query()
+            ->withoutGlobalScopes()
+            ->where('restaurant_id', $restaurantId)
+            ->whereIn('status', array_map(fn (ReservationStatus $status): string => $status->value, self::OCCUPYING_STATUSES))
+            ->where('desired_at', '>=', $date->startOfDay()->subMinutes($margin))
+            ->where('desired_at', '<=', $date->endOfDay()->addMinutes($margin))
+            ->with(['tableAssignments' => fn ($query) => $query->withoutGlobalScopes()->select('id', 'reservation_request_id', 'table_id')])
+            ->get();
+    }
+
+    /**
+     * In-memory variant of {@see busyTableIds}: which table ids the already-loaded
+     * reservations occupy at `$datetime`, using the same half-open window. Lets
+     * the day grid evaluate every slot without a query per slot.
+     *
+     * @param  Collection<int, ReservationRequest>  $reservations
+     * @return Collection<int, int>
+     */
+    private function busyTableIdsFrom(Collection $reservations, CarbonImmutable $datetime, int $bufferMinutes): Collection
+    {
+        $windowStart = $datetime->subMinutes($bufferMinutes + self::SLOT_DURATION_MINUTES);
+        $windowEnd = $datetime->addMinutes(self::SLOT_DURATION_MINUTES + $bufferMinutes);
+
+        return $reservations
+            ->filter(fn (ReservationRequest $reservation): bool => $reservation->desired_at->gt($windowStart) && $reservation->desired_at->lt($windowEnd))
             ->flatMap(fn (ReservationRequest $reservation): Collection => $reservation->tableAssignments->pluck('table_id'))
             ->unique()
             ->values();
