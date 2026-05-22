@@ -33,8 +33,12 @@ class TableRequest extends FormRequest
             'label' => ['required', 'string', 'max:100'],
             'seats' => ['required', 'integer', 'between:1,20'],
             'room_tag' => ['nullable', 'string', 'max:50'],
-            'sort_order' => ['nullable', 'integer', 'between:0,9999'],
-            'active' => ['nullable', 'boolean'],
+            // active and sort_order are NOT NULL columns with DB defaults, so
+            // they are optional (omit → default) but must not be written as
+            // null. `sometimes` skips an absent field yet rejects an explicit
+            // null as a clean 422 instead of letting it hit the database.
+            'sort_order' => ['sometimes', 'integer', 'between:0,9999'],
+            'active' => ['sometimes', 'boolean'],
             'combinable_with' => ['nullable', 'array', 'max:20'],
             // Combinable ids must reference tables of the acting user's own
             // restaurant. Rule::exists hits the query builder, which bypasses

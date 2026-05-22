@@ -146,6 +146,19 @@ class TableCrudTest extends TestCase
             ->assertSessionHasErrors('label');
     }
 
+    public function test_store_rejects_an_explicit_null_active(): void
+    {
+        $home = Restaurant::factory()->create();
+
+        // active is a NOT NULL column: an explicit null must be a 422, never a
+        // null write that the production DB (MySQL/Postgres) would reject.
+        $this->actingAs($this->owner($home))
+            ->post(route('tables.store'), ['label' => 'Tisch 2', 'seats' => 4, 'active' => null])
+            ->assertSessionHasErrors('active');
+
+        $this->assertDatabaseMissing('tables', ['label' => 'Tisch 2']);
+    }
+
     public function test_owner_can_update_own_table(): void
     {
         $home = Restaurant::factory()->create();
@@ -183,6 +196,26 @@ class TableCrudTest extends TestCase
         $this->assertDatabaseHas('tables', ['id' => $table->id, 'label' => 'Alt']);
     }
 
+    public function test_update_rejects_combinable_with_from_a_foreign_restaurant(): void
+    {
+        $home = Restaurant::factory()->create();
+        $foreign = Restaurant::factory()->create();
+        $ownTable = Table::factory()->for($home)->create();
+        $foreignTable = Table::factory()->for($foreign)->create();
+
+        // The tenant-scoped combinable_with rule must hold on the update path
+        // too, not just on store.
+        $this->actingAs($this->owner($home))
+            ->patch(route('tables.update', $ownTable), [
+                'label' => 'Kombiniert',
+                'seats' => 4,
+                'combinable_with' => [$foreignTable->id],
+            ])
+            ->assertSessionHasErrors('combinable_with.0');
+
+        $this->assertDatabaseMissing('tables', ['id' => $ownTable->id, 'label' => 'Kombiniert']);
+    }
+
     public function test_destroy_soft_deactivates_the_table(): void
     {
         $home = Restaurant::factory()->create();
@@ -212,6 +245,18 @@ class TableCrudTest extends TestCase
         // stay referenceable.
         $this->assertNotNull(Table::find($table->id));
         $this->assertDatabaseHas('tables', ['id' => $table->id, 'active' => false]);
+    }
+
+    public function test_staff_cannot_destroy_a_table(): void
+    {
+        $home = Restaurant::factory()->create();
+        $table = Table::factory()->for($home)->create(['active' => true]);
+
+        $this->actingAs($this->staff($home))
+            ->delete(route('tables.destroy', $table))
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('tables', ['id' => $table->id, 'active' => true]);
     }
 
     public function test_cross_tenant_destroy_returns_404(): void
