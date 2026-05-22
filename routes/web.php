@@ -4,6 +4,7 @@ use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExportController;
 use App\Http\Controllers\PublicReservationController;
+use App\Http\Controllers\QuickReservationController;
 use App\Http\Controllers\ReservationMessagesController;
 use App\Http\Controllers\ReservationReplyController;
 use App\Http\Controllers\ReservationRequestController;
@@ -34,6 +35,12 @@ Route::get('exports/download/{token}', [ExportController::class, 'download'])
     ->whereNumber('token')
     ->middleware(['auth', 'verified', 'signed'])
     ->name('exports.download');
+
+// Static segment registered before the {reservation} wildcard (static-before-
+// wildcard convention, mirroring tables/availability vs tables/{table}).
+Route::get('reservations/quick', [QuickReservationController::class, 'create'])
+    ->middleware(['auth', 'verified', 'can:viewAny,'.Table::class])
+    ->name('reservations.quick.create');
 
 Route::get('reservations/{reservation}', [ReservationRequestController::class, 'show'])
     ->whereNumber('reservation')

@@ -11,6 +11,7 @@ declare module 'ziggy-js' {
             "required": true
         }
     ],
+    "reservations.quick.create": [],
     "reservations.show": [
         {
             "name": "reservation",
