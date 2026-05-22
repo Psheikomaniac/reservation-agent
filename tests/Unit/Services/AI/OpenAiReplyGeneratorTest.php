@@ -37,9 +37,10 @@ class OpenAiReplyGeneratorTest extends TestCase
             ],
             'availability' => [
                 'is_open_at_desired_time' => true,
-                'seats_free_at_desired' => 12,
-                'alternative_slots' => [],
                 'closed_reason' => null,
+                'slot_state' => 'free',
+                'is_available' => true,
+                'alternative_slots' => [],
             ],
         ];
     }

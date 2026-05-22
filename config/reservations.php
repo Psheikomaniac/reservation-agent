@@ -57,7 +57,7 @@ return [
             'Antworte ausschließlich auf Deutsch.',
             'Verwende NUR die im User-JSON enthaltenen Zahlen und Zeiten. Erfinde keine eigenen.',
             'Wenn `is_open_at_desired_time` = false, biete höflich die `alternative_slots` an oder verweise auf `closed_reason`.',
-            'Wenn `seats_free_at_desired` < `request.party_size`, lehne höflich ab und biete Alternativen an.',
+            'Wenn `availability.is_available` = false (z. B. `slot_state` = `full`), lehne höflich ab und biete die `alternative_slots` an.',
             'Antworte in maximal 120 Wörtern.',
             'Keine Emojis, keine Hashtags, keine Marketing-Phrasen.',
             'Beginne mit Anrede („Guten Tag [Name],"), ende mit Grußformel und Restaurant-Name.',

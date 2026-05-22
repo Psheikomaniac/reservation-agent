@@ -69,7 +69,7 @@ class GenerateReservationReplySnapshotTest extends TestCase
     public function test_happy_path_snapshot_preserves_builder_context_alongside_meta_fields(): void
     {
         $request = $this->makeRequest();
-        $expected = (new ReservationContextBuilder)->build($request);
+        $expected = app(ReservationContextBuilder::class)->build($request);
 
         $this->bindGenerator('Guten Tag, gerne!');
 
@@ -106,15 +106,16 @@ class GenerateReservationReplySnapshotTest extends TestCase
 
         // Every documented field must be present, even when null/empty.
         $this->assertArrayHasKey('is_open_at_desired_time', $reply->ai_prompt_snapshot['availability']);
-        $this->assertArrayHasKey('seats_free_at_desired', $reply->ai_prompt_snapshot['availability']);
-        $this->assertArrayHasKey('alternative_slots', $reply->ai_prompt_snapshot['availability']);
         $this->assertArrayHasKey('closed_reason', $reply->ai_prompt_snapshot['availability']);
+        $this->assertArrayHasKey('slot_state', $reply->ai_prompt_snapshot['availability']);
+        $this->assertArrayHasKey('is_available', $reply->ai_prompt_snapshot['availability']);
+        $this->assertArrayHasKey('alternative_slots', $reply->ai_prompt_snapshot['availability']);
     }
 
     public function test_generator_failure_still_persists_the_context_that_would_have_been_sent(): void
     {
         $request = $this->makeRequest();
-        $expected = (new ReservationContextBuilder)->build($request);
+        $expected = app(ReservationContextBuilder::class)->build($request);
 
         $this->bindGenerator(new RuntimeException('upstream timeout'));
 
