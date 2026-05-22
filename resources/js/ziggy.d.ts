@@ -23,6 +23,7 @@ declare module 'ziggy-js' {
             "required": true
         }
     ],
+    "reservations.quick.create": [],
     "reservations.bulk-status": [],
     "reservation-replies.approve": [
         {
