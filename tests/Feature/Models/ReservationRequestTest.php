@@ -7,6 +7,7 @@ use App\Enums\ReservationStatus;
 use App\Models\ReservationReply;
 use App\Models\ReservationRequest;
 use App\Models\Restaurant;
+use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -227,5 +228,56 @@ class ReservationRequestTest extends TestCase
 
         $this->assertSame($newest->id, $request->latestReply->id);
         $this->assertSame('Latest revision', $request->latestReply->body);
+    }
+
+    public function test_phone_and_walk_in_sources_round_trip_through_the_cast(): void
+    {
+        $phone = ReservationRequest::factory()->create(['source' => ReservationSource::Phone]);
+        $walkIn = ReservationRequest::factory()->create(['source' => ReservationSource::WalkIn]);
+
+        $this->assertSame('phone', DB::table('reservation_requests')->where('id', $phone->id)->value('source'));
+        $this->assertSame('walk_in', DB::table('reservation_requests')->where('id', $walkIn->id)->value('source'));
+        $this->assertSame(ReservationSource::Phone, $phone->fresh()->source);
+        $this->assertSame(ReservationSource::WalkIn, $walkIn->fresh()->source);
+    }
+
+    public function test_note_is_nullable_and_fillable(): void
+    {
+        $withNote = ReservationRequest::factory()->create(['note' => 'Geburtstag, Fensterplatz']);
+        $withoutNote = ReservationRequest::factory()->create(['note' => null]);
+
+        $this->assertSame('Geburtstag, Fensterplatz', $withNote->fresh()->note);
+        $this->assertNull($withoutNote->fresh()->note);
+    }
+
+    public function test_created_by_user_id_is_nullable_fillable_and_cast_to_int(): void
+    {
+        $user = User::factory()->create();
+
+        $captured = ReservationRequest::factory()->create(['created_by_user_id' => $user->id]);
+        $external = ReservationRequest::factory()->create(['created_by_user_id' => null]);
+
+        $this->assertSame($user->id, $captured->fresh()->created_by_user_id);
+        $this->assertIsInt($captured->fresh()->created_by_user_id);
+        $this->assertNull($external->fresh()->created_by_user_id);
+    }
+
+    public function test_created_by_user_id_is_nulled_when_the_capturing_user_is_deleted(): void
+    {
+        $user = User::factory()->create();
+        $request = ReservationRequest::factory()->create(['created_by_user_id' => $user->id]);
+
+        $user->delete();
+
+        $this->assertTrue($request->fresh()->exists, 'the reservation must survive deleting its creator');
+        $this->assertNull($request->fresh()->created_by_user_id);
+    }
+
+    public function test_created_by_relation_returns_the_capturing_user(): void
+    {
+        $user = User::factory()->create();
+        $request = ReservationRequest::factory()->create(['created_by_user_id' => $user->id]);
+
+        $this->assertSame($user->id, $request->createdBy->id);
     }
 }

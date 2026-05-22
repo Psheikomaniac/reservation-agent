@@ -37,9 +37,11 @@ class ReservationRequest extends Model
         'party_size',
         'desired_at',
         'message',
+        'note',
         'raw_payload',
         'needs_manual_review',
         'email_message_id',
+        'created_by_user_id',
     ];
 
     /**
@@ -56,6 +58,7 @@ class ReservationRequest extends Model
             'desired_at' => 'datetime',
             'raw_payload' => 'encrypted:array',
             'needs_manual_review' => 'boolean',
+            'created_by_user_id' => 'integer',
         ];
     }
 
@@ -65,6 +68,17 @@ class ReservationRequest extends Model
     public function restaurant(): BelongsTo
     {
         return $this->belongsTo(Restaurant::class);
+    }
+
+    /**
+     * The user who captured this request manually (phone/walk-in); null for
+     * web-form and email sources.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by_user_id');
     }
 
     /**
