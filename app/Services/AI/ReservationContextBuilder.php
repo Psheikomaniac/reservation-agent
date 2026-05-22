@@ -4,39 +4,42 @@ declare(strict_types=1);
 
 namespace App\Services\AI;
 
+use App\Enums\SlotState;
 use App\Models\ReservationRequest;
 use App\Models\Restaurant;
+use App\Services\Availability\SlotAvailability;
 use App\Support\OpeningHours;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 
 /**
  * Deterministic producer of the Context-JSON consumed by the AI reply
  * generator (PRD-005).
  *
- * Every number in the output comes from Laravel — never from the AI. The
- * builder is intentionally pure (no external IO besides DB reads via the
- * already-loaded models) so it can be unit-tested without OpenAI.
+ * Every availability fact comes from Laravel — never from the AI. As of PRD-011
+ * the table-level {@see SlotAvailability} service is the single source of truth:
+ * the builder maps its free/tight/full verdict (and the next-best slots it
+ * suggests when full) into the prompt context. Opening-hours framing
+ * (`is_open_at_desired_time`, `closed_reason`) still comes from OpeningHours.
  *
  * Output shape:
  *
  *   restaurant   → name, tonality
  *   request      → guest_name, party_size, desired_at (restaurant local time), message
- *   availability → is_open_at_desired_time, seats_free_at_desired,
- *                  alternative_slots, closed_reason
+ *   availability → is_open_at_desired_time, closed_reason, slot_state,
+ *                  is_available, alternative_slots
  */
 final class ReservationContextBuilder
 {
-    /** Spacing between candidate alternative slots, in minutes (PRD-005). */
-    private const int SLOT_STEP_MINUTES = 30;
-
-    /** Maximum number of alternative slots returned to the AI prompt. */
-    private const int MAX_ALTERNATIVE_SLOTS = 3;
+    public function __construct(
+        private readonly SlotAvailability $slotAvailability,
+    ) {}
 
     /**
      * @return array{
      *     restaurant: array{name: string, tonality: string},
      *     request: array{guest_name: string, party_size: int, desired_at: ?string, message: ?string},
-     *     availability: array{is_open_at_desired_time: bool, seats_free_at_desired: int, alternative_slots: list<string>, closed_reason: ?string}
+     *     availability: array{is_open_at_desired_time: bool, closed_reason: ?string, slot_state: string, is_available: bool, alternative_slots: list<string>}
      * }
      */
     public function build(ReservationRequest $request): array
@@ -47,14 +50,6 @@ final class ReservationContextBuilder
 
         $isOpen = $desiredAt !== null && $hours->isOpenAt($desiredAt);
         $closedReason = $desiredAt !== null ? $hours->closedReasonAt($desiredAt) : null;
-
-        // availableSeatsAt() returns null when the restaurant is closed at
-        // that time. Per PRD-005, we surface 0 to the AI in that case so the
-        // "decline / suggest alternatives" branch triggers naturally.
-        $seatsFree = $desiredAt !== null
-            ? ($restaurant->availableSeatsAt($desiredAt) ?? 0)
-            : 0;
-
         $localDesiredAt = $desiredAt?->copy()->setTimezone($restaurant->timezone);
 
         return [
@@ -70,67 +65,42 @@ final class ReservationContextBuilder
             ],
             'availability' => [
                 'is_open_at_desired_time' => $isOpen,
-                'seats_free_at_desired' => $seatsFree,
-                'alternative_slots' => $desiredAt === null
-                    ? []
-                    : $this->alternativeSlots($restaurant, $desiredAt, $request->party_size),
                 'closed_reason' => $closedReason,
+                ...$this->slotAvailabilityFor($request, $desiredAt, $restaurant),
             ],
         ];
     }
 
     /**
-     * Up to MAX_ALTERNATIVE_SLOTS candidate slots on the same restaurant-local
-     * day, spaced SLOT_STEP_MINUTES apart, that:
-     *   - lie inside an opening block,
-     *   - have at least $partySize seats free,
-     *   - are not the exact desired time.
+     * Table-level availability for the desired slot, mapped from
+     * {@see SlotAvailability::forSlot}. When `desired_at` is missing we report an
+     * unavailable, stateless slot so the AI falls back to manual handling.
      *
-     * Sorted by absolute distance to the desired time (closest first).
-     * Returns `[]` when the day has no opening blocks (Ruhetag).
-     *
-     * @return list<string> Carbon `Y-m-d H:i` formatted strings in restaurant local time.
+     * @return array{slot_state: string, is_available: bool, alternative_slots: list<string>}
      */
-    private function alternativeSlots(Restaurant $restaurant, CarbonInterface $desiredAt, int $partySize): array
+    private function slotAvailabilityFor(ReservationRequest $request, ?CarbonInterface $desiredAt, Restaurant $restaurant): array
     {
-        $hours = OpeningHours::fromRestaurant($restaurant);
-        $blocks = $hours->blocksAt($desiredAt);
-
-        if ($blocks === []) {
-            return [];
+        if ($desiredAt === null) {
+            return [
+                'slot_state' => SlotState::Full->value,
+                'is_available' => false,
+                'alternative_slots' => [],
+            ];
         }
 
-        $local = $desiredAt->copy()->setTimezone($restaurant->timezone);
-        $desiredKey = $local->format('Y-m-d H:i');
-
-        $eligible = [];
-        foreach ($blocks as $block) {
-            $start = $local->copy()->setTimeFromTimeString($block['from']);
-            $end = $local->copy()->setTimeFromTimeString($block['to']);
-
-            for ($cursor = $start->copy(); $cursor->lt($end); $cursor->addMinutes(self::SLOT_STEP_MINUTES)) {
-                if ($cursor->format('Y-m-d H:i') === $desiredKey) {
-                    continue;
-                }
-
-                $seats = $restaurant->availableSeatsAt($cursor);
-                if ($seats === null || $seats < $partySize) {
-                    continue;
-                }
-
-                $eligible[] = $cursor->copy();
-            }
-        }
-
-        usort(
-            $eligible,
-            fn (CarbonInterface $a, CarbonInterface $b): int => abs($a->diffInSeconds($local))
-                <=> abs($b->diffInSeconds($local))
+        $slot = $this->slotAvailability->forSlot(
+            $request->restaurant_id,
+            CarbonImmutable::parse($desiredAt),
+            $request->party_size,
         );
 
-        return array_map(
-            fn (CarbonInterface $slot): string => $slot->format('Y-m-d H:i'),
-            array_slice($eligible, 0, self::MAX_ALTERNATIVE_SLOTS)
-        );
+        return [
+            'slot_state' => $slot->state->value,
+            'is_available' => $slot->state !== SlotState::Full,
+            'alternative_slots' => $slot->alternativeSlots
+                ->map(fn (CarbonImmutable $candidate): string => $candidate->setTimezone($restaurant->timezone)->format('Y-m-d H:i'))
+                ->values()
+                ->all(),
+        ];
     }
 }
