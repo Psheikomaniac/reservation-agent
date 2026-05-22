@@ -23,8 +23,10 @@ use Inertia\Response;
  * The operator works in the restaurant's local time, so smart defaults and the
  * `defaults` prop are local, while `forSlot` receives the UTC instant it expects
  * (matching how reservations store `desired_at`). The controller stays a thin
- * Inertia adapter — availability is the service's job and tenant scope comes
- * from the Table model's global RestaurantScope and the user's own restaurant.
+ * Inertia adapter — availability is the service's job, authorization is the
+ * route's `can:viewAny,Table` gate (TablePolicy, which also rejects a user
+ * without a restaurant, like the tables.availability endpoint), and tenant scope
+ * comes from the Table model's global RestaurantScope.
  */
 final class QuickReservationController extends Controller
 {
@@ -37,18 +39,18 @@ final class QuickReservationController extends Controller
     public function create(QuickReservationCreateRequest $request): Response
     {
         $user = $request->user();
-        // The route is only auth/verified-gated (no model binding to scope on),
-        // so guard the one precondition the rest relies on: a user without a
-        // restaurant has no slots to show and must not reach the form.
-        abort_if($user->restaurant === null, 403);
         $restaurant = $user->restaurant;
         $validated = $request->validated();
 
         // The operator types local time; default to "now, rounded up to the next
         // 30 minutes, plus an hour" so the form opens on a plausible near slot.
-        $local = isset($validated['date'], $validated['time'])
-            ? CarbonImmutable::parse("{$validated['date']} {$validated['time']}", $restaurant->timezone)
-            : CarbonImmutable::now($restaurant->timezone)->ceilMinutes(30)->addHour();
+        // date and time default independently so a partially supplied query never
+        // silently drops the field that was given (the live preview sends both).
+        $base = CarbonImmutable::now($restaurant->timezone)->ceilMinutes(30)->addHour();
+        $local = CarbonImmutable::parse(
+            ($validated['date'] ?? $base->format('Y-m-d')).' '.($validated['time'] ?? $base->format('H:i')),
+            $restaurant->timezone,
+        );
 
         $partySize = (int) ($validated['party_size'] ?? self::DEFAULT_PARTY_SIZE);
 

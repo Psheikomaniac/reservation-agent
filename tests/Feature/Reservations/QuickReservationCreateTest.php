@@ -53,6 +53,20 @@ class QuickReservationCreateTest extends TestCase
             );
     }
 
+    public function test_staff_may_open_the_quick_form(): void
+    {
+        [$restaurant] = $this->ownerWithRestaurant();
+        $staff = User::factory()->forRestaurant($restaurant)->create(['role' => UserRole::Staff]);
+        Table::factory()->for($restaurant)->create();
+
+        $this->actingAs($staff)
+            ->get(route('reservations.quick.create'))
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Reservations/Quick', false)
+            );
+    }
+
     public function test_availability_reflects_query_parameters(): void
     {
         [$restaurant, $owner] = $this->ownerWithRestaurant();

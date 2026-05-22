@@ -36,6 +36,12 @@ Route::get('exports/download/{token}', [ExportController::class, 'download'])
     ->middleware(['auth', 'verified', 'signed'])
     ->name('exports.download');
 
+// Static segment registered before the {reservation} wildcard (static-before-
+// wildcard convention, mirroring tables/availability vs tables/{table}).
+Route::get('reservations/quick', [QuickReservationController::class, 'create'])
+    ->middleware(['auth', 'verified', 'can:viewAny,'.Table::class])
+    ->name('reservations.quick.create');
+
 Route::get('reservations/{reservation}', [ReservationRequestController::class, 'show'])
     ->whereNumber('reservation')
     ->middleware(['auth', 'verified'])
@@ -45,10 +51,6 @@ Route::get('reservations/{reservation}/messages', [ReservationMessagesController
     ->whereNumber('reservation')
     ->middleware(['auth', 'verified'])
     ->name('reservations.messages.index');
-
-Route::get('reservations/quick', [QuickReservationController::class, 'create'])
-    ->middleware(['auth', 'verified'])
-    ->name('reservations.quick.create');
 
 Route::post('reservations/bulk-status', [ReservationRequestController::class, 'bulkStatus'])
     ->middleware(['auth', 'verified'])
