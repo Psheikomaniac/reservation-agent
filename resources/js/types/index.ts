@@ -127,6 +127,19 @@ export interface DayAvailability {
     reserved_seats: number;
 }
 
+export interface TableCombination {
+    primary_table_id: number;
+    table_ids: number[];
+    total_seats: number;
+}
+
+export interface QuickAvailability {
+    state: SlotState;
+    suggested_table_id: number | null;
+    combination: TableCombination | null;
+    alternative_slots: Array<{ date: string; time: string }>;
+}
+
 export interface DashboardFilters {
     status?: ReservationStatus[];
     source?: ReservationSource[];
