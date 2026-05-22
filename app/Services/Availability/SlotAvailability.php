@@ -10,6 +10,7 @@ use App\Models\ReservationRequest;
 use App\Models\Restaurant;
 use App\Models\Table;
 use App\Services\Availability\DTOs\SlotAvailabilityResult;
+use App\Services\Availability\DTOs\TableCombination;
 use App\Support\OpeningHours;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -27,8 +28,9 @@ use Illuminate\Support\Collection;
  * reservation at `desired_at` occupies its table over the half-open footprint
  * `[desired_at - buffer, desired_at + slot_duration + buffer)`. Slot duration is
  * a fixed 90 min in V3 (per-restaurant configurability is a documented PRD-011
- * follow-up). Single-table suggestion only in this task; combinations (#314) and
- * alternative slots (#315) extend this service later.
+ * follow-up). A party that fits no single table can be seated on a two-table
+ * combination via `combinable_with` (max two tables in V3); alternative slots
+ * (#315) extend this service later.
  */
 final class SlotAvailability
 {
@@ -56,34 +58,118 @@ final class SlotAvailability
             return $this->fullResult($datetime);
         }
 
-        $tables = $restaurant->tables()->withoutGlobalScopes()->where('active', true)->get();
+        $tables = $this->activeTables($restaurant);
         if ($tables->isEmpty()) {
             return $this->fullResult($datetime);
         }
 
         $busyTableIds = $this->busyTableIds($restaurantId, $datetime, (int) $restaurant->slot_buffer_minutes);
-
-        $fittingTables = $tables
-            ->reject(fn (Table $table): bool => $busyTableIds->contains($table->id))
-            ->filter(fn (Table $table): bool => $table->seats >= $partySize);
-
-        if ($fittingTables->isEmpty()) {
-            return $this->fullResult($datetime);
-        }
-
-        $suggested = $fittingTables->sortBy('seats')->first();
+        $freeTables = $tables->reject(fn (Table $table): bool => $busyTableIds->contains($table->id));
 
         $totalCapacity = (int) $tables->sum('seats');
         $busyCapacity = (int) $tables->whereIn('id', $busyTableIds->all())->sum('seats');
         $remainingRatio = $totalCapacity > 0 ? ($totalCapacity - $busyCapacity) / $totalCapacity : 0.0;
+        $state = $remainingRatio <= self::TIGHT_THRESHOLD ? SlotState::Tight : SlotState::Free;
+
+        $fitting = $this->combinationFrom($freeTables, $partySize);
+        if ($fitting === null) {
+            return $this->fullResult($datetime);
+        }
 
         return new SlotAvailabilityResult(
             slotStart: $datetime,
-            state: $remainingRatio <= self::TIGHT_THRESHOLD ? SlotState::Tight : SlotState::Free,
-            suggestedTableId: $suggested->id,
-            combination: null,
+            state: $state,
+            suggestedTableId: $fitting->primaryTableId,
+            combination: count($fitting->tableIds) > 1 ? $fitting : null,
             alternativeSlots: collect(),
         );
+    }
+
+    /**
+     * Smallest table assignment that seats `$partySize` in the given slot, or
+     * null if neither a single table nor a two-table combination fits. Prefers a
+     * single table; falls back to the smallest compatible `combinable_with` pair.
+     */
+    public function suggestTableCombination(int $restaurantId, CarbonImmutable $datetime, int $partySize): ?TableCombination
+    {
+        $restaurant = Restaurant::query()->findOrFail($restaurantId);
+        $tables = $this->activeTables($restaurant);
+
+        if ($tables->isEmpty()) {
+            return null;
+        }
+
+        $busyTableIds = $this->busyTableIds($restaurantId, $datetime, (int) $restaurant->slot_buffer_minutes);
+        $freeTables = $tables->reject(fn (Table $table): bool => $busyTableIds->contains($table->id));
+
+        return $this->combinationFrom($freeTables, $partySize);
+    }
+
+    /**
+     * Active tables of the restaurant, independent of the tenant global scope.
+     *
+     * Ordered by `sort_order` then `id` so that downstream tie-breaks — most
+     * notably which table becomes the primary of a symmetric combination — are
+     * deterministic regardless of database row order or engine.
+     *
+     * @return Collection<int, Table>
+     */
+    private function activeTables(Restaurant $restaurant): Collection
+    {
+        return $restaurant->tables()
+            ->withoutGlobalScopes()
+            ->where('active', true)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * Pick a table assignment for `$partySize` from already-resolved free tables:
+     * the smallest fitting single table, else the smallest compatible two-table
+     * combination, else null. V3 caps combinations at two tables.
+     *
+     * @param  Collection<int, Table>  $freeTables
+     */
+    private function combinationFrom(Collection $freeTables, int $partySize): ?TableCombination
+    {
+        $single = $freeTables
+            ->filter(fn (Table $table): bool => $table->seats >= $partySize)
+            ->sortBy('seats')
+            ->first();
+
+        if ($single !== null) {
+            return new TableCombination(
+                primaryTableId: $single->id,
+                tableIds: [$single->id],
+                totalSeats: (int) $single->seats,
+            );
+        }
+
+        $best = null;
+        foreach ($freeTables as $primary) {
+            foreach ($primary->combinable_with ?? [] as $partnerId) {
+                $partner = $freeTables->firstWhere('id', $partnerId);
+                if ($partner === null || $partner->id === $primary->id) {
+                    continue;
+                }
+
+                $total = (int) $primary->seats + (int) $partner->seats;
+                if ($total < $partySize) {
+                    continue;
+                }
+
+                if ($best === null || $total < $best->totalSeats) {
+                    $best = new TableCombination(
+                        primaryTableId: $primary->id,
+                        tableIds: [$primary->id, $partner->id],
+                        totalSeats: $total,
+                    );
+                }
+            }
+        }
+
+        return $best;
     }
 
     /**
