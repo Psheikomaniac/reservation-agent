@@ -42,6 +42,10 @@ Route::get('reservations/quick', [QuickReservationController::class, 'create'])
     ->middleware(['auth', 'verified', 'can:viewAny,'.Table::class])
     ->name('reservations.quick.create');
 
+Route::post('reservations/quick', [QuickReservationController::class, 'store'])
+    ->middleware(['auth', 'verified', 'can:viewAny,'.Table::class])
+    ->name('reservations.quick.store');
+
 Route::get('reservations/{reservation}', [ReservationRequestController::class, 'show'])
     ->whereNumber('reservation')
     ->middleware(['auth', 'verified'])
