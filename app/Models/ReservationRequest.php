@@ -37,9 +37,11 @@ class ReservationRequest extends Model
         'party_size',
         'desired_at',
         'message',
+        'note',
         'raw_payload',
         'needs_manual_review',
         'email_message_id',
+        'created_by_user_id',
     ];
 
     /**
