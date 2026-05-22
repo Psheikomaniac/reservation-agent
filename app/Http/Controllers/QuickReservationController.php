@@ -14,9 +14,9 @@ use App\Models\Restaurant;
 use App\Models\Table;
 use App\Services\Availability\DTOs\SlotAvailabilityResult;
 use App\Services\Availability\SlotAvailability;
+use App\Support\Timezone;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -94,24 +94,26 @@ final class QuickReservationController extends Controller
         $restaurant = $user->restaurant;
         $validated = $request->validated();
 
-        $datetime = CarbonImmutable::parse("{$validated['date']} {$validated['time']}", $restaurant->timezone)->utc();
+        // Shared helper (used by the public reservation path too) parses the
+        // operator's local input and returns the UTC instant reservations store.
+        $datetime = Timezone::localToUtc(
+            "{$validated['date']} {$validated['time']}",
+            $restaurant->timezone,
+        )->toImmutable();
 
         DB::transaction(function () use ($user, $validated, $datetime): void {
-            // Serialize concurrent bookings for this slot: lock the restaurant's
-            // active tables, then evaluate availability *inside* the lock so a
-            // second request waits and sees the first's committed assignment
-            // before it picks a table. (lockForUpdate is a no-op on SQLite but
-            // protects the production MySQL/Postgres path.)
+            // Serialize concurrent bookings for this slot: a SELECT ... FOR UPDATE
+            // on the restaurant's active tables makes a second request block until
+            // this one commits, after which its in-lock availability re-check sees
+            // the assignment just written. (lockForUpdate is a no-op on SQLite but
+            // protects the production MySQL/Postgres path.) Tenant scope is the
+            // Table model's global RestaurantScope.
             Table::query()
                 ->where('active', true)
                 ->lockForUpdate()
                 ->get();
 
-            $freeTableIds = $this->availability
-                ->freeTablesAt($user->restaurant_id, $datetime)
-                ->pluck('id');
-
-            $tableIds = $this->resolveTableIds($user->restaurant_id, $datetime, $validated, $freeTableIds);
+            $tableIds = $this->resolveTableIds($user->restaurant_id, $datetime, $validated);
 
             $reservation = ReservationRequest::create([
                 'restaurant_id' => $user->restaurant_id,
@@ -140,25 +142,29 @@ final class QuickReservationController extends Controller
     }
 
     /**
-     * Resolve the table(s) to assign. A manual `table_id` is honoured as long as
-     * it is actually free in the slot (the operator may deliberately seat a
-     * regular at a specific table); otherwise the smallest fitting single table
-     * or two-table combination is auto-assigned. A two-table combination yields
-     * an assignment per table so both are marked occupied (the M:N schema, PRD-011)
-     * — assigning only the primary would leave the second table double-bookable.
-     * Throws when the chosen table is busy or no table fits, surfacing a clear
-     * message instead of a silent failure.
+     * Resolve the table(s) to assign. A manual `table_id` is honoured — yielding
+     * exactly that one table — as long as it is actually free in the slot (the
+     * operator may deliberately seat a regular at a specific table). Otherwise
+     * the smallest fitting single table or two-table combination is auto-assigned;
+     * a combination returns one id per table so both are marked occupied (the M:N
+     * schema, PRD-011) — assigning only the primary would leave the second table
+     * double-bookable. Throws when the chosen table is busy or no table fits,
+     * surfacing a clear message instead of a silent failure.
      *
      * @param  array<string, mixed>  $validated
-     * @param  Collection<int, int>  $freeTableIds
      * @return list<int>
      */
-    private function resolveTableIds(int $restaurantId, CarbonImmutable $datetime, array $validated, Collection $freeTableIds): array
+    private function resolveTableIds(int $restaurantId, CarbonImmutable $datetime, array $validated): array
     {
         if (isset($validated['table_id'])) {
             $tableId = (int) $validated['table_id'];
 
-            if (! $freeTableIds->contains($tableId)) {
+            $isFree = $this->availability
+                ->freeTablesAt($restaurantId, $datetime)
+                ->pluck('id')
+                ->contains($tableId);
+
+            if (! $isFree) {
                 throw ValidationException::withMessages([
                     'table_id' => 'Dieser Tisch ist im gewählten Zeitfenster bereits belegt.',
                 ]);

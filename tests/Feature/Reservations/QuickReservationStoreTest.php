@@ -120,6 +120,18 @@ class QuickReservationStoreTest extends TestCase
         $this->assertSame(ReservationSource::WalkIn, ReservationRequest::sole()->source);
     }
 
+    public function test_staff_may_store_a_quick_reservation(): void
+    {
+        $staff = User::factory()->forRestaurant($this->restaurant)->create(['role' => UserRole::Staff]);
+        Table::factory()->for($this->restaurant)->create(['seats' => 4]);
+
+        $this->actingAs($staff)
+            ->post(route('reservations.quick.store'), $this->payload())
+            ->assertRedirect(route('dashboard'));
+
+        $this->assertSame($staff->id, ReservationRequest::sole()->created_by_user_id);
+    }
+
     public function test_it_auto_assigns_the_smallest_fitting_table(): void
     {
         Table::factory()->for($this->restaurant)->create(['seats' => 8, 'sort_order' => 1]);
