@@ -283,6 +283,64 @@ class SlotAvailabilityTest extends TestCase
         $this->assertSame($result->combination->primaryTableId, $result->suggestedTableId);
     }
 
+    public function test_free_tables_at_returns_unbooked_active_tables_only(): void
+    {
+        $busyTable = Table::factory()->for($this->restaurant)->create(['seats' => 4, 'sort_order' => 1]);
+        $freeTable = Table::factory()->for($this->restaurant)->create(['seats' => 4, 'sort_order' => 2]);
+        Table::factory()->for($this->restaurant)->inactive()->create(['seats' => 4, 'sort_order' => 3]);
+        $this->occupy($busyTable, '2026-06-15 19:00', ReservationStatus::Confirmed);
+
+        $free = $this->service->freeTablesAt(
+            $this->restaurant->id,
+            CarbonImmutable::parse('2026-06-15 19:00', 'UTC'),
+        );
+
+        $this->assertSame([$freeTable->id], $free->pluck('id')->all());
+    }
+
+    public function test_for_slot_fills_alternative_slots_with_next_free_slots_when_full(): void
+    {
+        // One table booked at 19:00. With 90-min buffer + 90-min duration the
+        // table is busy until 22:00; the next 30-min slots inside the 17:00-23:00
+        // window are 22:00 and 22:30, then 23:00 is closed.
+        $table = Table::factory()->for($this->restaurant)->create(['seats' => 4]);
+        $this->occupy($table, '2026-06-15 19:00', ReservationStatus::Confirmed);
+
+        $result = $this->slot('2026-06-15 19:00', partySize: 4);
+
+        $this->assertSame(SlotState::Full, $result->state);
+        $this->assertSame(
+            ['22:00', '22:30'],
+            $result->alternativeSlots->map(fn ($slot) => $slot->format('H:i'))->all(),
+        );
+    }
+
+    public function test_alternative_slots_are_capped_at_three(): void
+    {
+        // Free all evening: an early-afternoon full slot (outside hours) yields the
+        // first three open 30-min slots from 17:00.
+        Table::factory()->for($this->restaurant)->create(['seats' => 4]);
+
+        $result = $this->slot('2026-06-15 09:00', partySize: 4);
+
+        $this->assertSame(SlotState::Full, $result->state);
+        $this->assertCount(3, $result->alternativeSlots);
+        $this->assertSame(
+            ['17:00', '17:30', '18:00'],
+            $result->alternativeSlots->map(fn ($slot) => $slot->format('H:i'))->all(),
+        );
+    }
+
+    public function test_alternative_slots_stay_empty_for_a_free_slot(): void
+    {
+        Table::factory()->for($this->restaurant)->create(['seats' => 4]);
+
+        $result = $this->slot('2026-06-15 19:00', partySize: 4);
+
+        $this->assertSame(SlotState::Free, $result->state);
+        $this->assertTrue($result->alternativeSlots->isEmpty());
+    }
+
     /**
      * Create two tables of the restaurant that can be combined with each other.
      *

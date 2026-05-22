@@ -36,6 +36,10 @@ final class SlotAvailability
 {
     private const int SLOT_DURATION_MINUTES = 90;
 
+    private const int SLOT_INCREMENT_MINUTES = 30;
+
+    private const int MAX_ALTERNATIVE_SLOTS = 3;
+
     private const float TIGHT_THRESHOLD = 0.25;
 
     /**
@@ -51,6 +55,40 @@ final class SlotAvailability
     ];
 
     public function forSlot(int $restaurantId, CarbonImmutable $datetime, int $partySize): SlotAvailabilityResult
+    {
+        $result = $this->evaluateSlot($restaurantId, $datetime, $partySize);
+
+        if ($result->state !== SlotState::Full) {
+            return $result;
+        }
+
+        // Only a full slot needs next-best times; evaluateSlot itself never
+        // recurses into the alternative search, so this stays bounded.
+        return new SlotAvailabilityResult(
+            slotStart: $result->slotStart,
+            state: $result->state,
+            suggestedTableId: $result->suggestedTableId,
+            combination: $result->combination,
+            alternativeSlots: $this->findAlternativeSlots($restaurantId, $datetime, $partySize),
+        );
+    }
+
+    /**
+     * Active tables free for the buffered slot, ordered for deterministic output.
+     *
+     * @return Collection<int, Table>
+     */
+    public function freeTablesAt(int $restaurantId, CarbonImmutable $datetime): Collection
+    {
+        $restaurant = Restaurant::query()->findOrFail($restaurantId);
+        $busyTableIds = $this->busyTableIds($restaurantId, $datetime, (int) $restaurant->slot_buffer_minutes);
+
+        return $this->activeTables($restaurant)
+            ->reject(fn (Table $table): bool => $busyTableIds->contains($table->id))
+            ->values();
+    }
+
+    private function evaluateSlot(int $restaurantId, CarbonImmutable $datetime, int $partySize): SlotAvailabilityResult
     {
         $restaurant = Restaurant::query()->findOrFail($restaurantId);
 
@@ -199,6 +237,30 @@ final class SlotAvailability
             ->flatMap(fn (ReservationRequest $reservation): Collection => $reservation->tableAssignments->pluck('table_id'))
             ->unique()
             ->values();
+    }
+
+    /**
+     * Up to three later same-day slots (30-min steps) that are not full, used to
+     * offer next-best times when the requested slot is full. Closed and full
+     * candidates are skipped because evaluateSlot reports them as full.
+     *
+     * @return Collection<int, CarbonImmutable>
+     */
+    private function findAlternativeSlots(int $restaurantId, CarbonImmutable $after, int $partySize): Collection
+    {
+        $alternatives = collect();
+        $candidate = $after->addMinutes(self::SLOT_INCREMENT_MINUTES);
+        $endOfDay = $after->setTime(23, 59, 59);
+
+        while ($alternatives->count() < self::MAX_ALTERNATIVE_SLOTS && $candidate->lte($endOfDay)) {
+            if ($this->evaluateSlot($restaurantId, $candidate, $partySize)->state !== SlotState::Full) {
+                $alternatives->push($candidate);
+            }
+
+            $candidate = $candidate->addMinutes(self::SLOT_INCREMENT_MINUTES);
+        }
+
+        return $alternatives->values();
     }
 
     private function fullResult(CarbonImmutable $datetime): SlotAvailabilityResult
