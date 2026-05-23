@@ -3,6 +3,7 @@
 use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExportController;
+use App\Http\Controllers\GdprSelfServiceController;
 use App\Http\Controllers\PublicReservationController;
 use App\Http\Controllers\QuickReservationController;
 use App\Http\Controllers\ReservationMessagesController;
@@ -107,6 +108,13 @@ Route::post('r/{restaurant:slug}/reservations', [PublicReservationController::cl
 
 Route::get('r/{restaurant:slug}/reservations/thanks', [PublicReservationController::class, 'thanks'])
     ->name('public.reservations.thanks');
+
+// Public, login-less GDPR self-service (PRD-015). Signed link from the
+// confirmation mail; the signature is the only guard (no auth, scoped by id).
+Route::get('gdpr/{reservation}', [GdprSelfServiceController::class, 'show'])
+    ->whereNumber('reservation')
+    ->middleware('signed')
+    ->name('gdpr.self-service');
 
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
