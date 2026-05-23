@@ -64,7 +64,7 @@ class GdprDeleteTest extends TestCase
         $this->get($showUrl)
             ->assertOk()
             ->assertInertia(fn ($page) => $page
-                ->component('Public/GdprSelfService', false)
+                ->component('Public/GdprSelfService')
                 ->where('deleteToken', fn (string $token): bool => str_contains($token, '/gdpr/'.$reservation->id.'/delete')
                     && str_contains($token, 'signature='))
             );
@@ -96,7 +96,12 @@ class GdprDeleteTest extends TestCase
 
         $this->post($this->signedDeleteUrl($reservation), [
             'confirm_date' => $this->expectedConfirmDate($reservation),
-        ])->assertOk();
+        ])
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Public/GdprDeleted')
+                ->where('restaurant.name', $this->restaurant->name)
+            );
 
         $this->assertDatabaseMissing('reservation_requests', ['id' => $reservation->id]);
         $this->assertDatabaseMissing('reservation_replies', ['reservation_request_id' => $reservation->id]);
