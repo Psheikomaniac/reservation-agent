@@ -132,4 +132,47 @@ class WaitlistBannerTest extends TestCase
 
         $this->assertCount(0, $this->service()->eligibleNow($this->restaurant->id));
     }
+
+    public function test_includes_waitlisted_requests_whose_slot_is_only_tight(): void
+    {
+        // 4 tables x 4 seats = 16; occupy 3 (12 seats) → 25% free → Tight (not Full),
+        // and one 4-seat table still fits the party, so the entry must appear.
+        $tables = Table::factory()->for($this->restaurant)->count(4)->create(['seats' => 4]);
+        for ($i = 0; $i < 3; $i++) {
+            $this->occupy($tables[$i], '2026-06-15 19:00');
+        }
+        $waiting = $this->waitlisted('2026-06-15 19:00', partySize: 4);
+
+        $result = $this->service()->eligibleNow($this->restaurant->id);
+
+        $this->assertCount(1, $result);
+        $this->assertSame($waiting->id, $result->first()->id);
+    }
+
+    public function test_excludes_waitlisted_requests_without_a_desired_at(): void
+    {
+        Table::factory()->for($this->restaurant)->create(['seats' => 4]);
+        ReservationRequest::factory()->for($this->restaurant)->create([
+            'status' => ReservationStatus::Waitlisted,
+            'desired_at' => null,
+            'party_size' => 2,
+        ]);
+
+        $this->assertCount(0, $this->service()->eligibleNow($this->restaurant->id));
+    }
+
+    public function test_keeps_only_entries_whose_slot_is_free_across_different_slots(): void
+    {
+        $table = Table::factory()->for($this->restaurant)->create(['seats' => 4]);
+        // 18:00 is taken by a confirmed booking; 22:00 is far enough away (buffer +
+        // duration) that the single table is free there again.
+        $this->occupy($table, '2026-06-15 18:00');
+        $this->waitlisted('2026-06-15 18:00', partySize: 4); // full → excluded
+        $free = $this->waitlisted('2026-06-15 22:00', partySize: 4); // free → included
+
+        $result = $this->service()->eligibleNow($this->restaurant->id);
+
+        $this->assertCount(1, $result);
+        $this->assertSame($free->id, $result->first()->id);
+    }
 }

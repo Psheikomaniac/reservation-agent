@@ -53,9 +53,15 @@ final class WaitlistBanner
 
     private function slotHasRoom(ReservationRequest $request): bool
     {
+        // The query already excludes null desired_at; the guard keeps the method
+        // safe and explicit if it is ever called from another path.
+        if ($request->desired_at === null) {
+            return false;
+        }
+
         $result = $this->availability->forSlot(
             $request->restaurant_id,
-            CarbonImmutable::parse($request->desired_at),
+            CarbonImmutable::instance($request->desired_at),
             $request->party_size,
         );
 
