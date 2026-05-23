@@ -71,13 +71,14 @@ class SendModeSettingsController extends Controller
 
         Gate::authorize('manageSendMode', $restaurant);
 
-        $newMode = SendMode::from($request->validated('send_mode'));
+        $validated = $request->validated();
+        $newMode = SendMode::from($validated['send_mode']);
         $modeChanged = $restaurant->send_mode !== $newMode;
 
         $payload = [
             'send_mode' => $newMode,
-            'auto_send_party_size_max' => $request->validated('auto_send_party_size_max'),
-            'auto_send_min_lead_time_minutes' => $request->validated('auto_send_min_lead_time_minutes'),
+            'auto_send_party_size_max' => $validated['auto_send_party_size_max'],
+            'auto_send_min_lead_time_minutes' => $validated['auto_send_min_lead_time_minutes'],
         ];
 
         if ($modeChanged) {
@@ -85,10 +86,10 @@ class SendModeSettingsController extends Controller
             $payload['send_mode_changed_by'] = $user->id;
         }
 
-        // PRD-014 toggle: only touch the flag when the form sends it, so other
-        // callers of this endpoint leave it untouched.
-        if ($request->has('web_sync_confirm_enabled')) {
-            $payload['web_sync_confirm_enabled'] = $request->boolean('web_sync_confirm_enabled');
+        // PRD-014 toggle: only touch the flag when the form sends it (the rule
+        // is `sometimes`), so other callers of this endpoint leave it untouched.
+        if (array_key_exists('web_sync_confirm_enabled', $validated)) {
+            $payload['web_sync_confirm_enabled'] = $validated['web_sync_confirm_enabled'];
         }
 
         $restaurant->update($payload);
