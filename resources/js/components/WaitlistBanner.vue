@@ -7,7 +7,7 @@ const props = defineProps<{
     /** Waitlisted reservations whose slot is currently free (PRD-013). */
     banner: ReservationRequestRow[];
     /** Restaurant timezone, so wished times read in local time. */
-    timezone?: string;
+    timezone?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -34,6 +34,8 @@ function when(iso: string | null): string {
     <div
         v-if="banner.length > 0"
         class="rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-950/40"
+        role="status"
+        aria-live="polite"
         data-testid="waitlist-banner"
     >
         <p class="text-sm font-medium text-amber-900 dark:text-amber-200">{{ headline }}</p>
@@ -42,7 +44,7 @@ function when(iso: string | null): string {
                 <button
                     type="button"
                     class="text-amber-900 underline underline-offset-2 hover:no-underline dark:text-amber-200"
-                    data-testid="waitlist-entry"
+                    :data-testid="`waitlist-entry-${entry.id}`"
                     @click="emit('open', entry.id)"
                 >
                     {{ entry.guest_name }} – {{ when(entry.desired_at) }} ({{ entry.party_size }} P.)
