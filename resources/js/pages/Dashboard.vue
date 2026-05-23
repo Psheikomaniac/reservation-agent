@@ -451,7 +451,9 @@ watch(
 );
 
 function pollOnly(): string[] {
-    const keys = ['requests', 'stats'];
+    // waitlistBanner is refreshed by the poll so a cancellation that frees a slot
+    // surfaces a waiting guest within one tick (PRD-013), without a full reload.
+    const keys = ['requests', 'stats', 'waitlistBanner'];
     if (props.selectedRequest != null) {
         keys.push('selectedRequest');
     }
