@@ -116,5 +116,10 @@ Route::get('gdpr/{reservation}', [GdprSelfServiceController::class, 'show'])
     ->middleware('signed')
     ->name('gdpr.self-service');
 
+Route::post('gdpr/{reservation}/delete', [GdprSelfServiceController::class, 'delete'])
+    ->whereNumber('reservation')
+    ->middleware('signed')
+    ->name('gdpr.self-service.delete');
+
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
