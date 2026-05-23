@@ -4,8 +4,13 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\GdprDeleteRequest;
 use App\Models\GdprAudit;
 use App\Models\ReservationRequest;
+use Carbon\CarbonImmutable;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\URL;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -21,6 +26,9 @@ use Inertia\Response;
  */
 final class GdprSelfServiceController extends Controller
 {
+    /** Short confirm window for the destructive delete step (PRD-015). */
+    private const int DELETE_TOKEN_TTL_MINUTES = 15;
+
     public function show(ReservationRequest $reservation): Response
     {
         GdprAudit::record(GdprAudit::ACTION_VIEW, $reservation->restaurant_id);
@@ -40,6 +48,61 @@ final class GdprSelfServiceController extends Controller
                 'name' => $reservation->restaurant->name,
                 'timezone' => $reservation->restaurant->timezone,
             ],
+            // Short-lived signed token for the confirm step — a deliberately
+            // tighter window than the 30-day view link.
+            'deleteToken' => URL::temporarySignedRoute(
+                'gdpr.self-service.delete',
+                now()->addMinutes(self::DELETE_TOKEN_TTL_MINUTES),
+                ['reservation' => $reservation->id],
+            ),
         ]);
+    }
+
+    public function delete(GdprDeleteRequest $request, ReservationRequest $reservation): Response|RedirectResponse
+    {
+        // Anti-bot confirm: the typed date must equal the reservation date (in
+        // the restaurant's timezone — the date the guest actually booked, and
+        // the one the page shows them).
+        $expected = $this->expectedConfirmDate($reservation);
+        if ($expected === null || $request->validated('confirm_date') !== $expected) {
+            return back()->withErrors([
+                'confirm_date' => 'Das eingegebene Datum stimmt nicht mit der Reservierung überein.',
+            ]);
+        }
+
+        // Capture tenant context before the row is gone (no PII is kept).
+        $restaurantId = $reservation->restaurant_id;
+        $restaurantName = $reservation->restaurant->name;
+
+        DB::transaction(function () use ($reservation): void {
+            $reservation->messages()->delete();
+            $reservation->replies()->delete();
+            $reservation->tableAssignments()->delete();
+            $reservation->delete();
+        });
+
+        GdprAudit::record(GdprAudit::ACTION_DELETE, $restaurantId);
+
+        return Inertia::render('Public/GdprDeleted', [
+            'restaurant' => [
+                'name' => $restaurantName,
+            ],
+        ]);
+    }
+
+    /**
+     * The reservation date the guest must type to confirm deletion, in the
+     * restaurant timezone (`d.m.Y`). Null when the reservation has no desired
+     * time — confirmation then cannot match, so the data is left untouched.
+     */
+    private function expectedConfirmDate(ReservationRequest $reservation): ?string
+    {
+        if ($reservation->desired_at === null) {
+            return null;
+        }
+
+        return CarbonImmutable::instance($reservation->desired_at)
+            ->setTimezone($reservation->restaurant->timezone)
+            ->format('d.m.Y');
     }
 }

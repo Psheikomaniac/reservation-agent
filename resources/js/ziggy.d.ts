@@ -99,6 +99,13 @@ declare module 'ziggy-js' {
             "binding": "id"
         }
     ],
+    "gdpr.self-service.delete": [
+        {
+            "name": "reservation",
+            "required": true,
+            "binding": "id"
+        }
+    ],
     "profile.edit": [],
     "profile.update": [],
     "profile.destroy": [],
