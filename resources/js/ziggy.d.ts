@@ -26,6 +26,7 @@ declare module 'ziggy-js' {
         }
     ],
     "reservations.bulk-status": [],
+    "reservations.bulk-delete": [],
     "reservation-replies.approve": [
         {
             "name": "reply",
