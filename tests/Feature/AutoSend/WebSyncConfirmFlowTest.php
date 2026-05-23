@@ -143,7 +143,8 @@ class WebSyncConfirmFlowTest extends TestCase
         $this->assertSame(ReservationReplyStatus::Sent, $reply->status);
         $this->assertNotNull($reply->sent_at);
 
-        Mail::assertSent(ReservationReplyMail::class);
+        // Sent with the sync-confirm transparency flag (#356).
+        Mail::assertSent(ReservationReplyMail::class, fn (ReservationReplyMail $mail): bool => $mail->syncConfirm === true);
         // The sync path handled everything — the async draft pipeline must not fire.
         Event::assertNotDispatched(ReservationRequestReceived::class);
     }

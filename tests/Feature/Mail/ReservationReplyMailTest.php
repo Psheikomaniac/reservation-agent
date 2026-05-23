@@ -66,6 +66,26 @@ class ReservationReplyMailTest extends TestCase
         $mailable->assertDontSeeInText('&amp;');
     }
 
+    public function test_it_shows_the_automated_line_when_sync_confirm_is_true(): void
+    {
+        $reply = $this->makeReply('Guten Tag, Ihr Tisch ist bestätigt.');
+
+        $mailable = new ReservationReplyMail($reply, syncConfirm: true);
+
+        $mailable->assertSeeInText('Diese Bestätigung wurde automatisch erstellt.');
+        $mailable->assertSeeInText('Guten Tag, Ihr Tisch ist bestätigt.');
+    }
+
+    public function test_it_omits_the_automated_line_by_default(): void
+    {
+        $reply = $this->makeReply('Guten Tag, Ihr Tisch ist bestätigt.');
+
+        $mailable = new ReservationReplyMail($reply);
+
+        $mailable->assertDontSeeInText('automatisch erstellt');
+        $mailable->assertSeeInText('Guten Tag, Ihr Tisch ist bestätigt.');
+    }
+
     public function test_uses_the_application_from_address(): void
     {
         config()->set('mail.from.address', 'no-reply@test.tld');
