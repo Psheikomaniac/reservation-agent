@@ -142,6 +142,29 @@ class GdprDeleteTest extends TestCase
         $this->assertDatabaseHas('reservation_requests', ['id' => $reservation->id]);
     }
 
+    public function test_a_delete_signature_for_one_reservation_does_not_delete_another(): void
+    {
+        $reservationA = $this->reservation();
+        $otherRestaurant = Restaurant::factory()->create(['timezone' => 'Europe/Berlin']);
+        $reservationB = ReservationRequest::factory()->for($otherRestaurant)->create([
+            'desired_at' => CarbonImmutable::parse('2026-06-15 17:00:00', 'UTC'),
+        ]);
+
+        // Take A's valid delete signature and swap in B's id: the signature no
+        // longer matches the URL, so the destructive action is rejected.
+        $signedForA = $this->signedDeleteUrl($reservationA);
+        $tampered = str_replace(
+            '/gdpr/'.$reservationA->id.'/delete',
+            '/gdpr/'.$reservationB->id.'/delete',
+            $signedForA,
+        );
+
+        $this->post($tampered, ['confirm_date' => $this->expectedConfirmDate($reservationB)])
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('reservation_requests', ['id' => $reservationB->id]);
+    }
+
     public function test_it_does_not_log_pii_on_delete(): void
     {
         $reservation = $this->reservation(['guest_email' => 'leak-check@gmail.com']);
