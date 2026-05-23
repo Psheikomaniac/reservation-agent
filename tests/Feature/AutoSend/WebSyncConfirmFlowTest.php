@@ -10,6 +10,7 @@ use App\Enums\ReservationStatus;
 use App\Events\ReservationRequestReceived;
 use App\Jobs\GenerateReservationReplyJob;
 use App\Mail\ReservationReplyMail;
+use App\Models\ReservationMessage;
 use App\Models\ReservationReply;
 use App\Models\ReservationRequest;
 use App\Models\ReservationTableAssignment;
@@ -218,6 +219,9 @@ class WebSyncConfirmFlowTest extends TestCase
         $this->assertSame(ReservationStatus::New, $reservation->status);
         $this->assertSame(0, ReservationReply::withoutGlobalScopes()->count());
         $this->assertSame(0, ReservationTableAssignment::withoutGlobalScopes()->count());
+        // The outbound message is written before the send, so the rollback must
+        // also drop it — no orphaned audit row for a mail that never went out.
+        $this->assertSame(0, ReservationMessage::withoutGlobalScopes()->count());
 
         Event::assertDispatched(ReservationRequestReceived::class);
     }

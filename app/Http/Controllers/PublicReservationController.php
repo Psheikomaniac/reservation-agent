@@ -118,7 +118,8 @@ final class PublicReservationController extends Controller
             // a real reply. The generator is resolved here (not constructor-
             // injected) so a missing/invalid OPENAI_API_KEY is caught by this
             // try-block and degrades to the V1 path — V1 submits never build the
-            // OpenAI client (mirrors GenerateReservationReplyJob).
+            // OpenAI client (the same late-resolution trick as
+            // GenerateReservationReplyJob).
             $context = $this->contextBuilder->build($reservation);
             $body = app(OpenAiReplyGenerator::class)->generateSync($context);
 
@@ -165,20 +166,21 @@ final class PublicReservationController extends Controller
                     ]);
                 }
 
-                // Non-queued send INSIDE the transaction so an SMTP failure rolls
-                // back the reply + assignment and the request stays `new` for V1.
-                $this->sendConfirmation($reply, $reservation);
-
+                // Persist every DB side-effect (outbound message, reply -> sent,
+                // request -> confirmed) FIRST, then physically send as the very
+                // last step. forceFill bypasses the manual new->… state machine,
+                // exactly as SendReservationReplyJob does for the auto pipeline.
+                $mail = $this->recordSentReply($reply, $reservation);
                 $reservation->forceFill(['status' => ReservationStatus::Confirmed])->save();
+
+                // Non-queued send LAST so an SMTP failure rolls back the whole
+                // confirmation and the request stays `new` for V1 (PRD-014). The
+                // only residual window is a commit failure after a successful
+                // send — the irreducible DB+mail dual-write, and vanishingly rare.
+                Mail::to((string) $reservation->guest_email)->send($mail);
 
                 return true;
             });
-
-            if (! $confirmed) {
-                return null;
-            }
-
-            return $this->renderConfirmation($reservation, $restaurant);
         } catch (Throwable $e) {
             // Class only — never guest data or mail content (PRD-014).
             $this->logger->warning('web sync confirm failed, falling back to v1 path', [
@@ -188,19 +190,28 @@ final class PublicReservationController extends Controller
 
             return null;
         }
+
+        if (! $confirmed) {
+            return null;
+        }
+
+        // Rendered AFTER the committed transaction and outside the try, so a
+        // formatting error here surfaces as an error rather than silently
+        // falling through to V1 and double-confirming an already-mailed guest.
+        return $this->renderConfirmation($reservation, $restaurant);
     }
 
     /**
-     * Mail the confirmation immediately and record the outbound message, in
-     * parity with {@see SendReservationReplyJob} so threading
-     * (PRD-006) and the drawer history stay consistent.
+     * Record the outbound message and flag the reply as sent, then return the
+     * Mailable for the caller to dispatch. The outbound-message bookkeeping
+     * mirrors {@see SendReservationReplyJob} so threading (PRD-006) and the
+     * drawer history stay consistent; the parent request transition differs
+     * (sync-confirm -> confirmed, not replied) and is the caller's job.
      */
-    private function sendConfirmation(ReservationReply $reply, ReservationRequest $reservation): void
+    private function recordSentReply(ReservationReply $reply, ReservationRequest $reservation): ReservationReplyMail
     {
         $email = (string) $reservation->guest_email;
         $mail = new ReservationReplyMail($reply);
-
-        Mail::to($email)->send($mail);
 
         $fromAddress = (string) (config('mail.from.address') ?: 'noreply@localhost');
         $subject = (string) $mail->envelope()->subject;
@@ -222,6 +233,8 @@ final class PublicReservationController extends Controller
             'sent_at' => now(),
             'outbound_message_id' => $mail->messageId,
         ])->save();
+
+        return $mail;
     }
 
     private function renderConfirmation(ReservationRequest $reservation, Restaurant $restaurant): Response
