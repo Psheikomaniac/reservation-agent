@@ -155,9 +155,8 @@ class WebSyncConfirmFlowTest extends TestCase
         $this->fakeOpenAi([$this->replyResponse()]);
 
         $this->post(route('public.reservations.store', $this->restaurant), $this->validPayload())
-            // Second arg false: the Vue page lands in #357; skip the file check.
             ->assertInertia(fn ($page) => $page
-                ->component('Public/ConfirmedSync', false)
+                ->component('Public/ConfirmedSync')
                 ->where('reservation.party_size', 4)
                 ->where('reservation.date', '2026-06-15')
                 ->where('reservation.time', '19:00')
