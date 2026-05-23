@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Mail;
 
 use App\Enums\MessageDirection;
+use App\Mail\Concerns\HasGdprLink;
 use App\Models\ReservationMessage;
 use App\Models\ReservationReply;
 use Illuminate\Bus\Queueable;
@@ -29,6 +30,7 @@ use Illuminate\Queue\SerializesModels;
  */
 final class ReservationReplyMail extends Mailable
 {
+    use HasGdprLink;
     use Queueable;
     use SerializesModels;
 
@@ -109,6 +111,8 @@ final class ReservationReplyMail extends Mailable
                 // plaintext mail is incorrect by definition.
                 'body' => $this->reply->body,
                 'syncConfirm' => $this->syncConfirm,
+                // Generated per send so each mail carries a live 30-day link.
+                'gdprLink' => $this->gdprLink($this->reply->reservation_request_id),
             ],
         );
     }
