@@ -10,6 +10,7 @@ enum ReservationStatus: string
     case Confirmed = 'confirmed';
     case Declined = 'declined';
     case Cancelled = 'cancelled';
+    case Waitlisted = 'waitlisted';
 
     /**
      * @return list<self>
@@ -17,10 +18,11 @@ enum ReservationStatus: string
     public function allowedNextStates(): array
     {
         return match ($this) {
-            self::New => [self::InReview, self::Declined],
-            self::InReview => [self::Replied, self::Declined],
+            self::New => [self::InReview, self::Declined, self::Waitlisted],
+            self::InReview => [self::Replied, self::Declined, self::Waitlisted],
             self::Replied => [self::Confirmed, self::Cancelled],
             self::Confirmed => [self::Cancelled],
+            self::Waitlisted => [self::Confirmed, self::Declined],
             self::Declined, self::Cancelled => [],
         };
     }
