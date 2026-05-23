@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import DashboardExportDropdown from '@/components/DashboardExportDropdown.vue';
 import ReservationThreadHistory from '@/components/ReservationThreadHistory.vue';
+import WaitlistBanner from '@/components/WaitlistBanner.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -22,6 +23,7 @@ import {
     type NotificationSettings,
     type PaginatedReservationRequests,
     type ReservationRequestDetail,
+    type ReservationRequestRow,
     type ReservationSource,
     type ReservationStatus,
     type SharedData,
@@ -39,6 +41,7 @@ interface DashboardProps {
     stats: DashboardStats;
     selectedRequest?: ReservationRequestDetail | null;
     threadMessages?: ThreadMessage[] | null;
+    waitlistBanner: ReservationRequestRow[];
     openaiKeyRejectedAt?: string | null;
     sendMode?: 'manual' | 'shadow' | 'auto' | null;
 }
@@ -80,6 +83,7 @@ const STATUS_OPTIONS: { value: ReservationStatus; label: string }[] = [
     { value: 'confirmed', label: 'Bestätigt' },
     { value: 'declined', label: 'Abgelehnt' },
     { value: 'cancelled', label: 'Storniert' },
+    { value: 'waitlisted', label: 'Warteliste' },
 ];
 
 const SOURCE_OPTIONS: { value: ReservationSource; label: string }[] = [
@@ -94,6 +98,7 @@ const STATUS_BADGE_CLASS: Record<ReservationStatus, string> = {
     confirmed: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200',
     declined: 'bg-rose-100 text-rose-900 dark:bg-rose-900/40 dark:text-rose-200',
     cancelled: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
+    waitlisted: 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200',
 };
 
 const STATUS_LABEL: Record<ReservationStatus, string> = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.value, s.label])) as Record<
@@ -224,6 +229,25 @@ const drawerOpen = computed({
         });
     },
 });
+
+function openReservation(id: number): void {
+    router.visit(detailHref(id), {
+        only: ['selectedRequest'],
+        preserveScroll: true,
+        preserveState: true,
+    });
+}
+
+// PRD-013 waitlist transitions from the drawer. bulk-status validates the
+// transition server-side (canTransitionTo) and the redirect refreshes the
+// dashboard, so the drawer reflects the new status.
+function setReservationStatus(status: ReservationStatus): void {
+    const id = props.selectedRequest?.id;
+    if (id == null) {
+        return;
+    }
+    router.post(route('reservations.bulk-status'), { ids: [id], status }, { preserveScroll: true, preserveState: true });
+}
 
 const rawEmailOpen = ref(false);
 
@@ -544,6 +568,8 @@ useReservationDiffTrigger(dashboardRowIds, dashboardFilters, notifications);
                 </div>
             </header>
 
+            <WaitlistBanner :banner="props.waitlistBanner" :timezone="restaurantTimezone" @open="openReservation" />
+
             <section
                 class="flex flex-col gap-4 rounded-lg border border-border p-4"
                 data-testid="dashboard-filter-bar"
@@ -777,6 +803,30 @@ useReservationDiffTrigger(dashboardRowIds, dashboardFilters, notifications);
                         {{ STATUS_LABEL[props.selectedRequest.status] }}
                     </SheetDescription>
                 </SheetHeader>
+
+                <!-- PRD-013 waitlist transitions: park a new/in-review request, or
+                     resolve a waitlisted one. bulk-status enforces the allowed moves. -->
+                <div
+                    v-if="['new', 'in_review', 'waitlisted'].includes(props.selectedRequest.status)"
+                    class="flex flex-wrap gap-2"
+                    data-testid="waitlist-actions"
+                >
+                    <Button
+                        v-if="props.selectedRequest.status === 'new' || props.selectedRequest.status === 'in_review'"
+                        type="button"
+                        variant="outline"
+                        data-testid="action-waitlist"
+                        @click="setReservationStatus('waitlisted')"
+                    >
+                        Auf Warteliste
+                    </Button>
+                    <template v-if="props.selectedRequest.status === 'waitlisted'">
+                        <Button type="button" data-testid="action-confirm" @click="setReservationStatus('confirmed')">Bestätigen</Button>
+                        <Button type="button" variant="outline" data-testid="action-decline" @click="setReservationStatus('declined')">
+                            Ablehnen
+                        </Button>
+                    </template>
+                </div>
 
                 <div class="-mx-1 inline-flex gap-1 border-b border-border" role="tablist" data-testid="drawer-tabs">
                     <button

@@ -54,7 +54,7 @@ export interface User {
 
 export type BreadcrumbItemType = BreadcrumbItem;
 
-export type ReservationStatus = 'new' | 'in_review' | 'replied' | 'confirmed' | 'declined' | 'cancelled';
+export type ReservationStatus = 'new' | 'in_review' | 'replied' | 'confirmed' | 'declined' | 'cancelled' | 'waitlisted';
 export type ReservationSource = 'web_form' | 'email';
 
 export interface ReservationRequestRow {
