@@ -63,4 +63,19 @@ return [
             'Beginne mit Anrede („Guten Tag [Name],"), ende mit Grußformel und Restaurant-Name.',
         ],
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Synchronous web confirmation (PRD-014)
+    |--------------------------------------------------------------------------
+    |
+    | Global incident killswitch for the sync-confirm path. Setting
+    | WEB_SYNC_CONFIRM_GLOBAL_KILL=true stops every synchronous confirmation
+    | immediately, regardless of per-restaurant opt-in — e.g. during an OpenAI
+    | outage that would otherwise make each web submit wait out the 5s timeout.
+    |
+    */
+    'web_sync_confirm' => [
+        'kill' => (bool) env('WEB_SYNC_CONFIRM_GLOBAL_KILL', false),
+    ],
 ];
