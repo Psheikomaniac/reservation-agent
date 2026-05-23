@@ -11,6 +11,7 @@ use App\Http\Resources\ReservationMessageResource;
 use App\Http\Resources\ReservationRequestDetailResource;
 use App\Http\Resources\ReservationRequestResource;
 use App\Models\ReservationRequest;
+use App\Services\Waitlist\WaitlistBanner;
 use App\Support\OpenAiKeyHealth;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
@@ -20,10 +21,11 @@ use Inertia\Response;
 
 final class DashboardController extends Controller
 {
-    public function index(DashboardFilterRequest $request): Response
+    public function index(DashboardFilterRequest $request, WaitlistBanner $waitlistBanner): Response
     {
         $validated = $request->validated();
         $selectedId = isset($validated['selected']) ? (int) $validated['selected'] : null;
+        $restaurantId = $request->user()?->restaurant_id;
 
         $filterQuery = Arr::except($request->query(), ['selected']);
         $filters = $filterQuery === []
@@ -48,6 +50,14 @@ final class DashboardController extends Controller
                     ->where('status', ReservationStatus::InReview)
                     ->count(),
             ],
+            // PRD-013: waitlisted reservations whose slot is free again, so the
+            // dashboard can prompt the owner to pull a waiting guest in. Loaded
+            // with the page and refreshed by the existing poll (the frontend adds
+            // it to the reload's `only` set). A plain array (resolve) so the page
+            // can use it directly. Empty when the user has no restaurant.
+            'waitlistBanner' => $restaurantId === null
+                ? []
+                : ReservationRequestResource::collection($waitlistBanner->eligibleNow($restaurantId))->resolve($request),
             'selectedRequest' => fn () => $this->resolveSelected($selectedId, $request),
             'threadMessages' => fn () => $this->resolveThreadMessages($selectedId, $request),
             // Owner-only banner. The flag is global (V1.0 has one OpenAI key
