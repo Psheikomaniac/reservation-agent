@@ -18,11 +18,15 @@ class ReservationStatusTest extends TestCase
         $allowed = [
             [ReservationStatus::New, ReservationStatus::InReview],
             [ReservationStatus::New, ReservationStatus::Declined],
+            [ReservationStatus::New, ReservationStatus::Waitlisted],
             [ReservationStatus::InReview, ReservationStatus::Replied],
             [ReservationStatus::InReview, ReservationStatus::Declined],
+            [ReservationStatus::InReview, ReservationStatus::Waitlisted],
             [ReservationStatus::Replied, ReservationStatus::Confirmed],
             [ReservationStatus::Replied, ReservationStatus::Cancelled],
             [ReservationStatus::Confirmed, ReservationStatus::Cancelled],
+            [ReservationStatus::Waitlisted, ReservationStatus::Confirmed],
+            [ReservationStatus::Waitlisted, ReservationStatus::Declined],
         ];
 
         $rows = [];
@@ -76,11 +80,24 @@ class ReservationStatusTest extends TestCase
         }
     }
 
-    public function test_allowed_next_states_for_new_are_in_review_and_declined(): void
+    public function test_allowed_next_states_for_new_are_in_review_declined_and_waitlisted(): void
     {
         $this->assertEqualsCanonicalizing(
-            [ReservationStatus::InReview, ReservationStatus::Declined],
+            [ReservationStatus::InReview, ReservationStatus::Declined, ReservationStatus::Waitlisted],
             ReservationStatus::New->allowedNextStates()
         );
+    }
+
+    public function test_waitlisted_can_only_move_to_confirmed_or_declined(): void
+    {
+        $this->assertEqualsCanonicalizing(
+            [ReservationStatus::Confirmed, ReservationStatus::Declined],
+            ReservationStatus::Waitlisted->allowedNextStates()
+        );
+
+        // A waitlisted request must not jump back to new/in_review/replied or be cancelled directly.
+        foreach ([ReservationStatus::New, ReservationStatus::InReview, ReservationStatus::Replied, ReservationStatus::Cancelled] as $target) {
+            $this->assertFalse(ReservationStatus::Waitlisted->canTransitionTo($target));
+        }
     }
 }
