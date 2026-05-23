@@ -211,7 +211,7 @@ final class PublicReservationController extends Controller
     private function recordSentReply(ReservationReply $reply, ReservationRequest $reservation): ReservationReplyMail
     {
         $email = (string) $reservation->guest_email;
-        $mail = new ReservationReplyMail($reply);
+        $mail = new ReservationReplyMail($reply, syncConfirm: true);
 
         $fromAddress = (string) (config('mail.from.address') ?: 'noreply@localhost');
         $subject = (string) $mail->envelope()->subject;

@@ -34,8 +34,16 @@ final class ReservationReplyMail extends Mailable
 
     public readonly string $messageId;
 
-    public function __construct(public readonly ReservationReply $reply)
-    {
+    /**
+     * @param  bool  $syncConfirm  true when sent through the PRD-014 web
+     *                             sync-confirm path; surfaces a transparency
+     *                             line in the template (same intent as the
+     *                             PRD-007 auto-send notice).
+     */
+    public function __construct(
+        public readonly ReservationReply $reply,
+        public readonly bool $syncConfirm = false,
+    ) {
         $this->messageId = self::generateMessageId($reply->id);
     }
 
@@ -100,6 +108,7 @@ final class ReservationReplyMail extends Mailable
                 // escaping does not apply — and HTML-escaping inside a
                 // plaintext mail is incorrect by definition.
                 'body' => $this->reply->body,
+                'syncConfirm' => $this->syncConfirm,
             ],
         );
     }
