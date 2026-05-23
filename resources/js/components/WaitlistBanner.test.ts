@@ -8,11 +8,12 @@ const { formatSpy } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/format-datetime', () => ({
-    formatDateTime: (...args: unknown[]) => formatSpy(...args),
+    formatDateTime: formatSpy,
 }));
 
 beforeEach(() => {
-    formatSpy.mockClear();
+    formatSpy.mockReset();
+    formatSpy.mockImplementation((iso: string | null) => `FMT(${iso})`);
 });
 
 function makeEntry(overrides: Partial<ReservationRequestRow> = {}): ReservationRequestRow {
@@ -52,8 +53,8 @@ describe('WaitlistBanner.vue', () => {
         expect(entries[0].text()).toContain('(4 P.)');
     });
 
-    it('emits open with the entry id on click', async () => {
-        const wrapper = mount(WaitlistBanner, { props: { banner: [makeEntry({ id: 42 })] } });
+    it('emits open with the clicked entry id, not just the first', async () => {
+        const wrapper = mount(WaitlistBanner, { props: { banner: [makeEntry({ id: 7 }), makeEntry({ id: 42 })] } });
 
         await wrapper.get('[data-testid="waitlist-entry-42"]').trigger('click');
 
