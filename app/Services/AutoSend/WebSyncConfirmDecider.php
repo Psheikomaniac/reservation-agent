@@ -74,6 +74,8 @@ final class WebSyncConfirmDecider
             $request->party_size,
         );
 
+        // Only a Free slot proceeds — Tight (≤25% capacity left) is bookable from
+        // the dashboard but too close to full for an unattended confirmation.
         if ($slot->state !== SlotState::Free) {
             return WebSyncConfirmDecision::skip(self::REASON_SLOT_NOT_FREE);
         }
@@ -92,6 +94,12 @@ final class WebSyncConfirmDecider
 
     private function isShortNotice(ReservationRequest $request, Restaurant $restaurant): bool
     {
+        // Defensive: the cascade already returns on a null desired_at, but guard
+        // here too (matching AutoSendDecider) so the method is safe in isolation.
+        if ($request->desired_at === null) {
+            return false;
+        }
+
         $minutesUntilDesired = now()->diffInMinutes($request->desired_at, false);
 
         return $minutesUntilDesired < $restaurant->auto_send_min_lead_time_minutes;
