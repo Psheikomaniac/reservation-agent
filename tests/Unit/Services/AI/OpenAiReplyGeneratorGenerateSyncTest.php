@@ -4,12 +4,18 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Services\AI;
 
+use App\Exceptions\AI\OpenAiAuthenticationException;
+use App\Exceptions\AI\OpenAiRateLimitException;
 use App\Exceptions\AI\OpenAiTimeoutException;
 use App\Services\AI\OpenAiReplyGenerator;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Psr7\Request;
+use GuzzleHttp\Psr7\Response;
 use Illuminate\Support\Facades\Log;
 use OpenAI\Contracts\ClientContract;
+use OpenAI\Exceptions\ErrorException;
+use OpenAI\Exceptions\RateLimitException;
+use OpenAI\Exceptions\ServerException;
 use OpenAI\Exceptions\TransporterException;
 use OpenAI\Laravel\Facades\OpenAI;
 use OpenAI\Responses\Chat\CreateResponse;
@@ -121,6 +127,44 @@ class OpenAiReplyGeneratorGenerateSyncTest extends TestCase
         $this->makeGenerator($fake)->generateSync($this->makeContext());
     }
 
+    public function test_it_classifies_a_401_as_an_authentication_exception(): void
+    {
+        $fake = OpenAI::fake([
+            new ErrorException(
+                ['message' => 'invalid api key', 'type' => 'invalid_request_error'],
+                new Response(401),
+            ),
+        ]);
+
+        $this->expectException(OpenAiAuthenticationException::class);
+
+        $this->makeGenerator($fake)->generateSync($this->makeContext());
+    }
+
+    public function test_it_classifies_a_429_as_a_rate_limit_exception(): void
+    {
+        $fake = OpenAI::fake([
+            new RateLimitException(new Response(429)),
+        ]);
+
+        $this->expectException(OpenAiRateLimitException::class);
+
+        $this->makeGenerator($fake)->generateSync($this->makeContext());
+    }
+
+    public function test_it_propagates_a_server_error_instead_of_returning_the_fallback(): void
+    {
+        $fake = OpenAI::fake([
+            new ServerException(new Response(500)),
+        ]);
+
+        // A 5xx must not yield a confirmation; it propagates so the caller
+        // falls back to the V1 path.
+        $this->expectException(ServerException::class);
+
+        $this->makeGenerator($fake)->generateSync($this->makeContext());
+    }
+
     public function test_it_passes_the_timeout_to_the_sync_client_factory(): void
     {
         $fake = OpenAI::fake([
@@ -188,6 +232,36 @@ class OpenAiReplyGeneratorGenerateSyncTest extends TestCase
         try {
             $generator->generateSync($this->makeContext());
         } catch (OpenAiTimeoutException $e) {
+            $thrownMessage = $e->getMessage();
+        }
+
+        $serialized = json_encode($captured, JSON_UNESCAPED_UNICODE);
+        $this->assertNotFalse($serialized);
+        $this->assertStringNotContainsString(self::LEAK_SENTINEL, $serialized);
+        $this->assertStringNotContainsString(self::LEAK_SENTINEL, $thrownMessage);
+    }
+
+    public function test_the_api_key_never_leaks_on_the_classified_401_path(): void
+    {
+        config()->set('openai.api_key', self::LEAK_SENTINEL);
+
+        $captured = [];
+        Log::shouldReceive('warning')->andReturnUsing(function (string $message, array $context) use (&$captured): void {
+            $captured[] = ['message' => $message, 'context' => $context];
+        });
+        Log::shouldReceive('debug')->andReturnNull();
+        Log::shouldReceive('info')->andReturnNull();
+
+        $fake = OpenAI::fake([
+            new ErrorException(['message' => 'unauthorised'], new Response(401)),
+        ]);
+
+        $generator = new OpenAiReplyGenerator($fake, Log::getFacadeRoot());
+
+        $thrownMessage = '';
+        try {
+            $generator->generateSync($this->makeContext());
+        } catch (OpenAiAuthenticationException $e) {
             $thrownMessage = $e->getMessage();
         }
 

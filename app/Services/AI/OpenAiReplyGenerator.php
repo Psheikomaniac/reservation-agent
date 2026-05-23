@@ -37,7 +37,8 @@ use Throwable;
  * fallback and instead throws on every failure, letting the caller fall
  * back to the V1 path. See its docblock for the per-error mapping.
  *
- * Logging hygiene: only `$e->getMessage()` is logged. No API key, no
+ * Logging hygiene: only the exception message (and, for classified HTTP
+ * errors, the numeric status code) is logged. No API key, no
  * Authorization header, no full context payload, no guest data.
  */
 final class OpenAiReplyGenerator implements ReplyGenerator
@@ -116,8 +117,18 @@ final class OpenAiReplyGenerator implements ReplyGenerator
      *   - empty completion → `RuntimeException`
      *   - 401 / 429 / 5xx → the underlying OpenAI exception propagates
      *
-     * Logging hygiene matches `generate`: only `$e->getMessage()` is logged,
-     * never the API key, headers, context payload, or guest data.
+     * Error mapping (every branch is logged and then thrown — the sync path
+     * never returns the fallback):
+     *   - 401 → `OpenAiAuthenticationException` (classified like `generate`,
+     *     so the caller can surface the admin key-check notification)
+     *   - 429 → `OpenAiRateLimitException`
+     *   - transport failure / 5 s timeout → `OpenAiTimeoutException`
+     *   - 5xx, empty completion, malformed payload → the originating
+     *     exception propagates
+     *
+     * Logging hygiene matches `generate`: only the exception message (and,
+     * for classified HTTP errors, the numeric status) is logged — never the
+     * API key, headers, context payload, or guest data.
      *
      * @param  array<string, mixed>  $context  the JSON produced by
      *                                         ReservationContextBuilder::build()
@@ -142,6 +153,23 @@ final class OpenAiReplyGenerator implements ReplyGenerator
             OpenAiKeyHealth::clear();
 
             return $content;
+        } catch (ErrorException $e) {
+            $this->logger->warning('openai sync reply generation failed', [
+                'status' => $e->getStatusCode(),
+                'error' => $e->getErrorMessage(),
+            ]);
+
+            if ($e->getStatusCode() === 401) {
+                throw new OpenAiAuthenticationException;
+            }
+
+            throw $e;
+        } catch (RateLimitException $e) {
+            $this->logger->warning('openai sync reply generation rate-limited', [
+                'error' => $e->getMessage(),
+            ]);
+
+            throw new OpenAiRateLimitException;
         } catch (TransporterException $e) {
             // Guzzle connection timeout / network failure within the 5 s
             // budget surfaces here (openai-php wraps it).
@@ -149,7 +177,16 @@ final class OpenAiReplyGenerator implements ReplyGenerator
                 'error' => $e->getMessage(),
             ]);
 
-            throw new OpenAiTimeoutException;
+            throw new OpenAiTimeoutException(previous: $e);
+        } catch (Throwable $e) {
+            // 5xx, empty completion, malformed payload — log for parity with
+            // `generate`, then propagate so the caller falls back to V1
+            // (never the neutral fallback text).
+            $this->logger->warning('openai sync reply generation failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            throw $e;
         }
     }
 
