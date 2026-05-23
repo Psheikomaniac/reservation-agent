@@ -26,7 +26,7 @@ const germanDate = computed(() => {
 </script>
 
 <template>
-    <PublicLayout :heading="`Reservierung bei ${restaurant.name} bestätigt`" description="Ihr Tisch ist reserviert – eine Bestätigung ist unterwegs.">
+    <PublicLayout :heading="`Reservierung bei ${restaurant.name} bestätigt`" description="Ihr Tisch ist reserviert.">
         <Head :title="`Reservierung bestätigt – ${restaurant.name}`" />
 
         <dl class="space-y-3 text-sm">
