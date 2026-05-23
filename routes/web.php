@@ -61,6 +61,11 @@ Route::post('reservations/bulk-status', [ReservationRequestController::class, 'b
     ->middleware(['auth', 'verified'])
     ->name('reservations.bulk-status');
 
+// Owner-only GDPR bulk-delete by email (PRD-015); authorization in the request.
+Route::post('reservations/bulk-delete', [ReservationRequestController::class, 'bulkGdprDelete'])
+    ->middleware(['auth', 'verified'])
+    ->name('reservations.bulk-delete');
+
 Route::post('reservation-replies/{reply}/approve', [ReservationReplyController::class, 'approve'])
     ->middleware(['auth', 'verified', 'can:approve,reply'])
     ->name('reservation-replies.approve');

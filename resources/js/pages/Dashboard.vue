@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import DashboardExportDropdown from '@/components/DashboardExportDropdown.vue';
+import InputError from '@/components/InputError.vue';
 import ReservationThreadHistory from '@/components/ReservationThreadHistory.vue';
 import WaitlistBanner from '@/components/WaitlistBanner.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -29,7 +31,7 @@ import {
     type SharedData,
     type ThreadMessage,
 } from '@/types';
-import { Head, Link, router, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { ChevronDown, Info, Phone } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 
@@ -53,6 +55,7 @@ const breadcrumbs: BreadcrumbItem[] = [{ title: 'Dashboard', href: '/dashboard' 
 const page = usePage<SharedData>();
 const restaurantName = computed(() => page.props.restaurant?.name ?? '');
 const restaurantTimezone = computed(() => page.props.restaurant?.timezone);
+const isOwner = computed(() => page.props.auth.user.role === 'owner');
 
 // PRD-007 mode banner. Shows yellow for shadow (test mode, no risk to
 // guests yet) and red for auto (mail flows without operator approval),
@@ -167,6 +170,27 @@ function toggleSource(value: ReservationSource) {
 
 function submitSearch() {
     applyFilter({ q: search.value });
+}
+
+// GDPR Art. 17 owner bulk-delete by exact email (PRD-015).
+const gdprDeleteOpen = ref(false);
+const gdprDeleteForm = useForm({ email: '' });
+
+function openGdprDelete() {
+    gdprDeleteForm.clearErrors();
+    // Prefill from the current search term when it looks like an email.
+    gdprDeleteForm.email = search.value.includes('@') ? search.value.trim() : '';
+    gdprDeleteOpen.value = true;
+}
+
+function submitGdprDelete() {
+    gdprDeleteForm.post(route('reservations.bulk-delete'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            gdprDeleteOpen.value = false;
+            gdprDeleteForm.reset();
+        },
+    });
 }
 
 function commitDateRange() {
@@ -641,6 +665,17 @@ useReservationDiffTrigger(dashboardRowIds, dashboardFilters, notifications);
                     <Button v-if="hasActiveFilters" type="button" variant="ghost" class="h-9" data-testid="filter-clear" @click="clearAllFilters">
                         Filter zurücksetzen
                     </Button>
+
+                    <Button
+                        v-if="isOwner"
+                        type="button"
+                        variant="ghost"
+                        class="h-9 text-destructive hover:text-destructive"
+                        data-testid="gdpr-bulk-delete-open"
+                        @click="openGdprDelete"
+                    >
+                        DSGVO-Löschung
+                    </Button>
                 </div>
             </section>
 
@@ -1027,5 +1062,41 @@ useReservationDiffTrigger(dashboardRowIds, dashboardFilters, notifications);
                 </template>
             </SheetContent>
         </Sheet>
+
+        <Dialog v-model:open="gdprDeleteOpen">
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Daten DSGVO-konform löschen</DialogTitle>
+                    <DialogDescription>
+                        Alle Reservierungen mit dieser E-Mail-Adresse – samt Nachrichten, Antworten und Tisch-Zuordnungen – werden unwiderruflich
+                        gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <form class="grid gap-2" @submit.prevent="submitGdprDelete">
+                    <Input
+                        v-model="gdprDeleteForm.email"
+                        type="email"
+                        placeholder="gast@example.com"
+                        autocomplete="off"
+                        data-testid="gdpr-bulk-delete-email"
+                    />
+                    <InputError :message="gdprDeleteForm.errors.email" />
+                </form>
+
+                <DialogFooter>
+                    <Button type="button" variant="ghost" @click="gdprDeleteOpen = false">Abbrechen</Button>
+                    <Button
+                        type="button"
+                        variant="destructive"
+                        data-testid="gdpr-bulk-delete-confirm"
+                        :disabled="gdprDeleteForm.processing || gdprDeleteForm.email.length === 0"
+                        @click="submitGdprDelete"
+                    >
+                        Endgültig löschen
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     </AppLayout>
 </template>
