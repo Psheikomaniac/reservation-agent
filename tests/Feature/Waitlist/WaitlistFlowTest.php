@@ -66,6 +66,8 @@ class WaitlistFlowTest extends TestCase
     public function test_banner_excludes_a_waitlisted_request_whose_slot_is_full(): void
     {
         $table = Table::factory()->for($this->restaurant)->create(['seats' => 4]);
+        // Confirmed + a table assignment is what makes busyTableIds see the only
+        // table as taken, so the slot is genuinely Full for the waiting party.
         $busy = ReservationRequest::factory()->for($this->restaurant)->create([
             'status' => ReservationStatus::Confirmed,
             'desired_at' => CarbonImmutable::parse('2026-06-15 19:00', 'UTC'),
@@ -77,6 +79,44 @@ class WaitlistFlowTest extends TestCase
 
         $this->actingAs($this->owner)
             ->get(route('dashboard'))
+            ->assertInertia(fn (AssertableInertia $page) => $page->has('waitlistBanner', 0));
+    }
+
+    public function test_banner_appears_after_a_cancellation_frees_the_slot(): void
+    {
+        $table = Table::factory()->for($this->restaurant)->create(['seats' => 4]);
+        $confirmed = ReservationRequest::factory()->for($this->restaurant)->create([
+            'status' => ReservationStatus::Confirmed,
+            'desired_at' => CarbonImmutable::parse('2026-06-15 19:00', 'UTC'),
+            'party_size' => 4,
+        ]);
+        ReservationTableAssignment::factory()->for($confirmed, 'reservationRequest')->for($table)->create();
+        $waiting = $this->waitlisted('2026-06-15 19:00', partySize: 4);
+
+        // Slot is full → the waiting guest is hidden.
+        $this->actingAs($this->owner)
+            ->get(route('dashboard'))
+            ->assertInertia(fn (AssertableInertia $page) => $page->has('waitlistBanner', 0));
+
+        // Cancelling frees the table (Cancelled is non-occupying).
+        $confirmed->update(['status' => ReservationStatus::Cancelled]);
+
+        // Next load: the slot is free again, so the waiting guest surfaces.
+        $this->actingAs($this->owner)
+            ->get(route('dashboard'))
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->has('waitlistBanner', 1)
+                ->where('waitlistBanner.0.id', $waiting->id)
+            );
+    }
+
+    public function test_user_without_a_restaurant_sees_an_empty_banner(): void
+    {
+        $user = User::factory()->create(); // restaurant_id is null
+
+        $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk()
             ->assertInertia(fn (AssertableInertia $page) => $page->has('waitlistBanner', 0));
     }
 
@@ -106,6 +146,7 @@ class WaitlistFlowTest extends TestCase
             ->get(route('dashboard', ['status' => [ReservationStatus::Waitlisted->value]]))
             ->assertOk()
             ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('filters.status.0', 'waitlisted') // the value was accepted, not stripped
                 ->has('requests.data', 1)
                 ->where('requests.data.0.id', $waiting->id)
                 ->where('requests.data.0.status', 'waitlisted')
