@@ -107,9 +107,9 @@ class RestaurantTest extends TestCase
 
     public function test_web_sync_confirm_enabled_defaults_to_false_and_is_a_fillable_boolean(): void
     {
-        $default = Restaurant::factory()->create();
-        $this->assertFalse($default->fresh()->web_sync_confirm_enabled);
-        $this->assertIsBool($default->fresh()->web_sync_confirm_enabled);
+        $default = Restaurant::factory()->create()->fresh();
+        $this->assertFalse($default->web_sync_confirm_enabled);
+        $this->assertIsBool($default->web_sync_confirm_enabled);
 
         $enabled = Restaurant::factory()->create(['web_sync_confirm_enabled' => true]);
         $this->assertTrue($enabled->fresh()->web_sync_confirm_enabled);

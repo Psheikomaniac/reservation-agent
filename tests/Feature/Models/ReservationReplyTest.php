@@ -193,9 +193,9 @@ class ReservationReplyTest extends TestCase
 
     public function test_sync_confirm_defaults_to_false_and_is_a_fillable_boolean(): void
     {
-        $default = ReservationReply::factory()->create();
-        $this->assertFalse($default->fresh()->sync_confirm);
-        $this->assertIsBool($default->fresh()->sync_confirm);
+        $default = ReservationReply::factory()->create()->fresh();
+        $this->assertFalse($default->sync_confirm);
+        $this->assertIsBool($default->sync_confirm);
 
         $synced = ReservationReply::factory()->create(['sync_confirm' => true]);
         $this->assertTrue($synced->fresh()->sync_confirm);
