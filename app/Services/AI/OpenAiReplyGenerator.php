@@ -6,12 +6,16 @@ namespace App\Services\AI;
 
 use App\Exceptions\AI\OpenAiAuthenticationException;
 use App\Exceptions\AI\OpenAiRateLimitException;
+use App\Exceptions\AI\OpenAiTimeoutException;
 use App\Services\AI\Contracts\ReplyGenerator;
 use App\Support\OpenAiKeyHealth;
+use Closure;
 use OpenAI\Contracts\ClientContract;
 use OpenAI\Exceptions\ErrorException;
 use OpenAI\Exceptions\RateLimitException;
+use OpenAI\Exceptions\TransporterException;
 use Psr\Log\LoggerInterface;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -19,7 +23,7 @@ use Throwable;
  * `ReservationContextBuilder`) into a German reply text via OpenAI Chat
  * Completions.
  *
- * Error matrix (PRD-005 / #71):
+ * Async `generate` error matrix (PRD-005 / #71):
  *   - HTTP 401 or RateLimit/Server errors are classified as
  *     `OpenAiAuthenticationException` / `OpenAiRateLimitException` and
  *     RETHROWN so the job layer can drive the admin notification (#76)
@@ -27,6 +31,11 @@ use Throwable;
  *   - Every other error path — empty completion, network failure, 5xx,
  *     timeout, malformed payload — returns the neutral fallback so the
  *     caller never raises.
+ *
+ * The sync `generateSync` (PRD-014) has the OPPOSITE error contract: a
+ * web sync-confirm must carry a real AI reply, so it NEVER returns the
+ * fallback and instead throws on every failure, letting the caller fall
+ * back to the V1 path. See its docblock for the per-error mapping.
  *
  * Logging hygiene: only `$e->getMessage()` is logged. No API key, no
  * Authorization header, no full context payload, no guest data.
@@ -37,9 +46,18 @@ final class OpenAiReplyGenerator implements ReplyGenerator
 
     private const float TEMPERATURE = 0.4;
 
+    /**
+     * @param  (Closure(int): ClientContract)|null  $syncClientFactory
+     *                                                                  Builds a client whose HTTP timeout equals the sync hard-limit
+     *                                                                  (PRD-014). Bound in production so `generateSync` can run a
+     *                                                                  5 s-bounded call; left null in unit tests, where the injected
+     *                                                                  client (a fake) is used directly so `OpenAI::fake()` applies.
+     *                                                                  The async `generate` always uses the default 30 s `$client`.
+     */
     public function __construct(
         private readonly ClientContract $client,
         private readonly LoggerInterface $logger,
+        private readonly ?Closure $syncClientFactory = null,
     ) {}
 
     /**
@@ -49,16 +67,7 @@ final class OpenAiReplyGenerator implements ReplyGenerator
     public function generate(array $context): string
     {
         try {
-            $tonality = $this->extractTonality($context);
-
-            $response = $this->client->chat()->create([
-                'model' => config('reservations.ai.openai_model', 'gpt-4o-mini'),
-                'temperature' => self::TEMPERATURE,
-                'messages' => [
-                    ['role' => 'system', 'content' => $this->systemPrompt($tonality)],
-                    ['role' => 'user', 'content' => json_encode($context, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)],
-                ],
-            ]);
+            $response = $this->client->chat()->create($this->chatCreatePayload($context));
 
             $content = trim((string) ($response->choices[0]->message->content ?? ''));
 
@@ -92,6 +101,78 @@ final class OpenAiReplyGenerator implements ReplyGenerator
 
             return self::FALLBACK_TEXT;
         }
+    }
+
+    /**
+     * Synchronous reply generation for the PRD-014 web sync-confirm path.
+     *
+     * Runs inside the public submit latency with a hard `$timeout`-second
+     * budget enforced by the `syncClientFactory` client. Unlike `generate`,
+     * it NEVER returns the neutral fallback: a confirmation must carry a
+     * real AI reply, so every failure throws and the caller falls back to
+     * the V1 path.
+     *
+     *   - transport failure / 5 s timeout → `OpenAiTimeoutException`
+     *   - empty completion → `RuntimeException`
+     *   - 401 / 429 / 5xx → the underlying OpenAI exception propagates
+     *
+     * Logging hygiene matches `generate`: only `$e->getMessage()` is logged,
+     * never the API key, headers, context payload, or guest data.
+     *
+     * @param  array<string, mixed>  $context  the JSON produced by
+     *                                         ReservationContextBuilder::build()
+     */
+    public function generateSync(array $context, int $timeout = 5): string
+    {
+        $client = $this->syncClientFactory !== null
+            ? ($this->syncClientFactory)($timeout)
+            : $this->client;
+
+        try {
+            $response = $client->chat()->create($this->chatCreatePayload($context));
+
+            $content = trim((string) ($response->choices[0]->message->content ?? ''));
+
+            if ($content === '') {
+                throw new RuntimeException('OpenAI returned an empty completion for the sync reply.');
+            }
+
+            // Successful authenticated call — clear the admin "OpenAI key
+            // check" banner (#76), mirroring `generate`.
+            OpenAiKeyHealth::clear();
+
+            return $content;
+        } catch (TransporterException $e) {
+            // Guzzle connection timeout / network failure within the 5 s
+            // budget surfaces here (openai-php wraps it).
+            $this->logger->warning('openai sync reply generation timed out', [
+                'error' => $e->getMessage(),
+            ]);
+
+            throw new OpenAiTimeoutException;
+        }
+    }
+
+    /**
+     * The Chat Completions request body shared by the async `generate` and
+     * the sync `generateSync`: same model, temperature, system prompt and
+     * the deterministic context JSON as the user message.
+     *
+     * @param  array<string, mixed>  $context
+     * @return array<string, mixed>
+     */
+    private function chatCreatePayload(array $context): array
+    {
+        $tonality = $this->extractTonality($context);
+
+        return [
+            'model' => config('reservations.ai.openai_model', 'gpt-4o-mini'),
+            'temperature' => self::TEMPERATURE,
+            'messages' => [
+                ['role' => 'system', 'content' => $this->systemPrompt($tonality)],
+                ['role' => 'user', 'content' => json_encode($context, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)],
+            ],
+        ];
     }
 
     /**
