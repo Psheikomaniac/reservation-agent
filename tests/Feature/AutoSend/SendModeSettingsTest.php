@@ -159,6 +159,95 @@ class SendModeSettingsTest extends TestCase
             ->assertSessionHasErrors('send_mode');
     }
 
+    public function test_it_exposes_web_sync_confirm_enabled_on_the_edit_page(): void
+    {
+        $restaurant = $this->makeRestaurantWithMode(SendMode::Manual);
+        $restaurant->forceFill(['web_sync_confirm_enabled' => true])->save();
+        $owner = $this->makeOwner($restaurant);
+
+        $this->actingAs($owner)
+            ->get(route('settings.send-mode.edit'))
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('settings/SendMode')
+                ->where('webSyncConfirmEnabled', true)
+            );
+    }
+
+    public function test_it_allows_owner_to_enable_web_sync_confirm(): void
+    {
+        $restaurant = $this->makeRestaurantWithMode(SendMode::Manual);
+        $owner = $this->makeOwner($restaurant);
+        $this->assertFalse((bool) $restaurant->fresh()->web_sync_confirm_enabled);
+
+        $this->actingAs($owner)
+            ->patch(route('settings.send-mode.update'), [
+                'send_mode' => SendMode::Manual->value,
+                'auto_send_party_size_max' => 10,
+                'auto_send_min_lead_time_minutes' => 90,
+                'web_sync_confirm_enabled' => true,
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertTrue($restaurant->fresh()->web_sync_confirm_enabled);
+    }
+
+    public function test_it_allows_owner_to_disable_web_sync_confirm(): void
+    {
+        $restaurant = $this->makeRestaurantWithMode(SendMode::Manual);
+        $restaurant->forceFill(['web_sync_confirm_enabled' => true])->save();
+        $owner = $this->makeOwner($restaurant);
+
+        $this->actingAs($owner)
+            ->patch(route('settings.send-mode.update'), [
+                'send_mode' => SendMode::Manual->value,
+                'auto_send_party_size_max' => 10,
+                'auto_send_min_lead_time_minutes' => 90,
+                'web_sync_confirm_enabled' => false,
+            ])
+            ->assertRedirect();
+
+        $this->assertFalse($restaurant->fresh()->web_sync_confirm_enabled);
+    }
+
+    public function test_it_forbids_staff_from_enabling_web_sync_confirm(): void
+    {
+        $restaurant = $this->makeRestaurantWithMode(SendMode::Manual);
+        $staff = User::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'role' => UserRole::Staff,
+        ]);
+
+        $this->actingAs($staff)
+            ->patch(route('settings.send-mode.update'), [
+                'send_mode' => SendMode::Manual->value,
+                'auto_send_party_size_max' => 10,
+                'auto_send_min_lead_time_minutes' => 90,
+                'web_sync_confirm_enabled' => true,
+            ])
+            ->assertForbidden();
+
+        $this->assertFalse($restaurant->fresh()->web_sync_confirm_enabled);
+    }
+
+    public function test_it_leaves_web_sync_confirm_untouched_when_the_field_is_absent(): void
+    {
+        $restaurant = $this->makeRestaurantWithMode(SendMode::Manual);
+        $restaurant->forceFill(['web_sync_confirm_enabled' => true])->save();
+        $owner = $this->makeOwner($restaurant);
+
+        // A submit without the toggle field must not silently disable it.
+        $this->actingAs($owner)
+            ->patch(route('settings.send-mode.update'), [
+                'send_mode' => SendMode::Manual->value,
+                'auto_send_party_size_max' => 10,
+                'auto_send_min_lead_time_minutes' => 90,
+            ])
+            ->assertRedirect();
+
+        $this->assertTrue($restaurant->fresh()->web_sync_confirm_enabled);
+    }
+
     private function makeRestaurantWithMode(SendMode $mode): Restaurant
     {
         $restaurant = Restaurant::factory()->create();

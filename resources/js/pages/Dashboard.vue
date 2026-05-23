@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import DashboardExportDropdown from '@/components/DashboardExportDropdown.vue';
+import InputError from '@/components/InputError.vue';
 import ReservationThreadHistory from '@/components/ReservationThreadHistory.vue';
+import WaitlistBanner from '@/components/WaitlistBanner.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -22,13 +25,14 @@ import {
     type NotificationSettings,
     type PaginatedReservationRequests,
     type ReservationRequestDetail,
+    type ReservationRequestRow,
     type ReservationSource,
     type ReservationStatus,
     type SharedData,
     type ThreadMessage,
 } from '@/types';
-import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { ChevronDown, Info } from 'lucide-vue-next';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
+import { ChevronDown, Info, Phone } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 
 const POLL_MS = 30_000;
@@ -39,6 +43,7 @@ interface DashboardProps {
     stats: DashboardStats;
     selectedRequest?: ReservationRequestDetail | null;
     threadMessages?: ThreadMessage[] | null;
+    waitlistBanner: ReservationRequestRow[];
     openaiKeyRejectedAt?: string | null;
     sendMode?: 'manual' | 'shadow' | 'auto' | null;
 }
@@ -50,6 +55,7 @@ const breadcrumbs: BreadcrumbItem[] = [{ title: 'Dashboard', href: '/dashboard' 
 const page = usePage<SharedData>();
 const restaurantName = computed(() => page.props.restaurant?.name ?? '');
 const restaurantTimezone = computed(() => page.props.restaurant?.timezone);
+const isOwner = computed(() => page.props.auth.user.role === 'owner');
 
 // PRD-007 mode banner. Shows yellow for shadow (test mode, no risk to
 // guests yet) and red for auto (mail flows without operator approval),
@@ -80,6 +86,7 @@ const STATUS_OPTIONS: { value: ReservationStatus; label: string }[] = [
     { value: 'confirmed', label: 'Bestätigt' },
     { value: 'declined', label: 'Abgelehnt' },
     { value: 'cancelled', label: 'Storniert' },
+    { value: 'waitlisted', label: 'Warteliste' },
 ];
 
 const SOURCE_OPTIONS: { value: ReservationSource; label: string }[] = [
@@ -94,6 +101,7 @@ const STATUS_BADGE_CLASS: Record<ReservationStatus, string> = {
     confirmed: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200',
     declined: 'bg-rose-100 text-rose-900 dark:bg-rose-900/40 dark:text-rose-200',
     cancelled: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
+    waitlisted: 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200',
 };
 
 const STATUS_LABEL: Record<ReservationStatus, string> = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.value, s.label])) as Record<
@@ -164,6 +172,27 @@ function submitSearch() {
     applyFilter({ q: search.value });
 }
 
+// GDPR Art. 17 owner bulk-delete by exact email (PRD-015).
+const gdprDeleteOpen = ref(false);
+const gdprDeleteForm = useForm({ email: '' });
+
+function openGdprDelete() {
+    gdprDeleteForm.clearErrors();
+    // Prefill from the current search term when it looks like an email.
+    gdprDeleteForm.email = search.value.includes('@') ? search.value.trim() : '';
+    gdprDeleteOpen.value = true;
+}
+
+function submitGdprDelete() {
+    gdprDeleteForm.post(route('reservations.bulk-delete'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            gdprDeleteOpen.value = false;
+            gdprDeleteForm.reset();
+        },
+    });
+}
+
 function commitDateRange() {
     applyFilter({ from: fromDate.value, to: toDate.value });
 }
@@ -224,6 +253,25 @@ const drawerOpen = computed({
         });
     },
 });
+
+function openReservation(id: number): void {
+    router.visit(detailHref(id), {
+        only: ['selectedRequest'],
+        preserveScroll: true,
+        preserveState: true,
+    });
+}
+
+// PRD-013 waitlist transitions from the drawer. bulk-status validates the
+// transition server-side (canTransitionTo) and the redirect refreshes the
+// dashboard, so the drawer reflects the new status.
+function setReservationStatus(status: ReservationStatus): void {
+    const id = props.selectedRequest?.id;
+    if (id == null) {
+        return;
+    }
+    router.post(route('reservations.bulk-status'), { ids: [id], status }, { preserveScroll: true, preserveState: true });
+}
 
 const rawEmailOpen = ref(false);
 
@@ -451,7 +499,9 @@ watch(
 );
 
 function pollOnly(): string[] {
-    const keys = ['requests', 'stats'];
+    // waitlistBanner is refreshed by the poll so a cancellation that frees a slot
+    // surfaces a waiting guest within one tick (PRD-013), without a full reload.
+    const keys = ['requests', 'stats', 'waitlistBanner'];
     if (props.selectedRequest != null) {
         keys.push('selectedRequest');
     }
@@ -514,20 +564,35 @@ useReservationDiffTrigger(dashboardRowIds, dashboardFilters, notifications);
                     <p class="text-sm text-muted-foreground">Reservierungs-Dashboard</p>
                 </div>
 
-                <div class="flex flex-wrap items-center gap-3 text-sm" data-testid="dashboard-stats">
-                    <span
-                        class="rounded-md border border-blue-200 bg-blue-50 px-3 py-1 text-blue-900 dark:border-blue-900/40 dark:bg-blue-950/40 dark:text-blue-200"
+                <div class="flex flex-wrap items-center gap-3">
+                    <!-- The primary action for the owner-on-the-phone: log a phone/walk-in
+                         reservation. Kept a prominent button, not buried in a dropdown. -->
+                    <Link
+                        :href="route('reservations.quick.create')"
+                        class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+                        data-testid="quick-reservation-link"
                     >
-                        Neu: <strong>{{ props.stats.new }}</strong>
-                    </span>
-                    <span
-                        class="rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1 text-indigo-900 dark:border-indigo-900/40 dark:bg-indigo-950/40 dark:text-indigo-200"
-                    >
-                        In Bearbeitung: <strong>{{ props.stats.in_review }}</strong>
-                    </span>
-                    <DashboardExportDropdown :filters="props.filters" />
+                        <Phone class="size-4" />
+                        Telefon-Reservierung
+                    </Link>
+
+                    <div class="flex flex-wrap items-center gap-3 text-sm" data-testid="dashboard-stats">
+                        <span
+                            class="rounded-md border border-blue-200 bg-blue-50 px-3 py-1 text-blue-900 dark:border-blue-900/40 dark:bg-blue-950/40 dark:text-blue-200"
+                        >
+                            Neu: <strong>{{ props.stats.new }}</strong>
+                        </span>
+                        <span
+                            class="rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1 text-indigo-900 dark:border-indigo-900/40 dark:bg-indigo-950/40 dark:text-indigo-200"
+                        >
+                            In Bearbeitung: <strong>{{ props.stats.in_review }}</strong>
+                        </span>
+                        <DashboardExportDropdown :filters="props.filters" />
+                    </div>
                 </div>
             </header>
+
+            <WaitlistBanner :banner="props.waitlistBanner" :timezone="restaurantTimezone" @open="openReservation" />
 
             <section
                 class="flex flex-col gap-4 rounded-lg border border-border p-4"
@@ -599,6 +664,17 @@ useReservationDiffTrigger(dashboardRowIds, dashboardFilters, notifications);
 
                     <Button v-if="hasActiveFilters" type="button" variant="ghost" class="h-9" data-testid="filter-clear" @click="clearAllFilters">
                         Filter zurücksetzen
+                    </Button>
+
+                    <Button
+                        v-if="isOwner"
+                        type="button"
+                        variant="ghost"
+                        class="h-9 text-destructive hover:text-destructive"
+                        data-testid="gdpr-bulk-delete-open"
+                        @click="openGdprDelete"
+                    >
+                        DSGVO-Löschung
                     </Button>
                 </div>
             </section>
@@ -762,6 +838,30 @@ useReservationDiffTrigger(dashboardRowIds, dashboardFilters, notifications);
                         {{ STATUS_LABEL[props.selectedRequest.status] }}
                     </SheetDescription>
                 </SheetHeader>
+
+                <!-- PRD-013 waitlist transitions: park a new/in-review request, or
+                     resolve a waitlisted one. bulk-status enforces the allowed moves. -->
+                <div
+                    v-if="['new', 'in_review', 'waitlisted'].includes(props.selectedRequest.status)"
+                    class="flex flex-wrap gap-2"
+                    data-testid="waitlist-actions"
+                >
+                    <Button
+                        v-if="props.selectedRequest.status === 'new' || props.selectedRequest.status === 'in_review'"
+                        type="button"
+                        variant="outline"
+                        data-testid="action-waitlist"
+                        @click="setReservationStatus('waitlisted')"
+                    >
+                        Auf Warteliste
+                    </Button>
+                    <template v-if="props.selectedRequest.status === 'waitlisted'">
+                        <Button type="button" data-testid="action-confirm" @click="setReservationStatus('confirmed')">Bestätigen</Button>
+                        <Button type="button" variant="outline" data-testid="action-decline" @click="setReservationStatus('declined')">
+                            Ablehnen
+                        </Button>
+                    </template>
+                </div>
 
                 <div class="-mx-1 inline-flex gap-1 border-b border-border" role="tablist" data-testid="drawer-tabs">
                     <button
@@ -962,5 +1062,41 @@ useReservationDiffTrigger(dashboardRowIds, dashboardFilters, notifications);
                 </template>
             </SheetContent>
         </Sheet>
+
+        <Dialog v-model:open="gdprDeleteOpen">
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Daten DSGVO-konform löschen</DialogTitle>
+                    <DialogDescription>
+                        Alle Reservierungen mit dieser E-Mail-Adresse – samt Nachrichten, Antworten und Tisch-Zuordnungen – werden unwiderruflich
+                        gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <form class="grid gap-2" @submit.prevent="submitGdprDelete">
+                    <Input
+                        v-model="gdprDeleteForm.email"
+                        type="email"
+                        placeholder="gast@example.com"
+                        autocomplete="off"
+                        data-testid="gdpr-bulk-delete-email"
+                    />
+                    <InputError :message="gdprDeleteForm.errors.email" />
+                </form>
+
+                <DialogFooter>
+                    <Button type="button" variant="ghost" @click="gdprDeleteOpen = false">Abbrechen</Button>
+                    <Button
+                        type="button"
+                        variant="destructive"
+                        data-testid="gdpr-bulk-delete-confirm"
+                        :disabled="gdprDeleteForm.processing || gdprDeleteForm.email.length === 0"
+                        @click="submitGdprDelete"
+                    >
+                        Endgültig löschen
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     </AppLayout>
 </template>

@@ -133,6 +133,7 @@ class RestaurantAvailableSeatsAtTest extends TestCase
             ReservationStatus::Replied,
             ReservationStatus::Declined,
             ReservationStatus::Cancelled,
+            ReservationStatus::Waitlisted,
         ] as $status) {
             ReservationRequest::factory()
                 ->forRestaurant($restaurant)

@@ -5,6 +5,7 @@ import { computed, ref } from 'vue';
 import HeadingSmall from '@/components/HeadingSmall.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -27,6 +28,7 @@ interface Props {
     partySizeMax: number;
     minLeadTimeMinutes: number;
     sendModeChangedAt: string | null;
+    webSyncConfirmEnabled: boolean;
     shadowStats: ShadowStats;
 }
 
@@ -38,6 +40,7 @@ const form = useForm({
     send_mode: props.sendMode,
     auto_send_party_size_max: props.partySizeMax,
     auto_send_min_lead_time_minutes: props.minLeadTimeMinutes,
+    web_sync_confirm_enabled: props.webSyncConfirmEnabled,
 });
 
 const pendingMode = ref<SendMode | null>(null);
@@ -177,6 +180,24 @@ const triggerKillswitch = () => {
                         <Label for="min-lead-time"> Mindest-Vorlauf in Minuten </Label>
                         <Input id="min-lead-time" type="number" min="0" max="1440" v-model="form.auto_send_min_lead_time_minutes" />
                         <InputError :message="form.errors.auto_send_min_lead_time_minutes" />
+                    </div>
+
+                    <div class="rounded-lg border border-border p-4 md:col-span-2">
+                        <div class="flex items-center gap-3">
+                            <Checkbox
+                                id="web-sync-confirm-toggle"
+                                :checked="form.web_sync_confirm_enabled"
+                                :disabled="form.processing"
+                                data-testid="web-sync-confirm-toggle"
+                                @update:checked="(value) => (form.web_sync_confirm_enabled = Boolean(value))"
+                            />
+                            <Label for="web-sync-confirm-toggle">Online-Sofort-Bestätigung aktivieren</Label>
+                        </div>
+                        <p class="mt-2 text-sm text-muted-foreground">
+                            Wenn Web-Anfragen einen eindeutig freien Slot treffen, wird die Bestätigung direkt nach dem Absenden versandt. Greift
+                            NICHT bei knappem oder belegtem Slot, bei Gruppen über der Auto-Versand-Grenze oder bei zu kurzem Vorlauf.
+                        </p>
+                        <InputError :message="form.errors.web_sync_confirm_enabled" />
                     </div>
 
                     <div class="md:col-span-2">

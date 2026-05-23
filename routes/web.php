@@ -3,7 +3,9 @@
 use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExportController;
+use App\Http\Controllers\GdprSelfServiceController;
 use App\Http\Controllers\PublicReservationController;
+use App\Http\Controllers\QuickReservationController;
 use App\Http\Controllers\ReservationMessagesController;
 use App\Http\Controllers\ReservationReplyController;
 use App\Http\Controllers\ReservationRequestController;
@@ -35,6 +37,16 @@ Route::get('exports/download/{token}', [ExportController::class, 'download'])
     ->middleware(['auth', 'verified', 'signed'])
     ->name('exports.download');
 
+// Static segment registered before the {reservation} wildcard (static-before-
+// wildcard convention, mirroring tables/availability vs tables/{table}).
+Route::get('reservations/quick', [QuickReservationController::class, 'create'])
+    ->middleware(['auth', 'verified', 'can:viewAny,'.Table::class])
+    ->name('reservations.quick.create');
+
+Route::post('reservations/quick', [QuickReservationController::class, 'store'])
+    ->middleware(['auth', 'verified', 'can:viewAny,'.Table::class])
+    ->name('reservations.quick.store');
+
 Route::get('reservations/{reservation}', [ReservationRequestController::class, 'show'])
     ->whereNumber('reservation')
     ->middleware(['auth', 'verified'])
@@ -48,6 +60,11 @@ Route::get('reservations/{reservation}/messages', [ReservationMessagesController
 Route::post('reservations/bulk-status', [ReservationRequestController::class, 'bulkStatus'])
     ->middleware(['auth', 'verified'])
     ->name('reservations.bulk-status');
+
+// Owner-only GDPR bulk-delete by email (PRD-015); authorization in the request.
+Route::post('reservations/bulk-delete', [ReservationRequestController::class, 'bulkGdprDelete'])
+    ->middleware(['auth', 'verified'])
+    ->name('reservations.bulk-delete');
 
 Route::post('reservation-replies/{reply}/approve', [ReservationReplyController::class, 'approve'])
     ->middleware(['auth', 'verified', 'can:approve,reply'])
@@ -96,6 +113,18 @@ Route::post('r/{restaurant:slug}/reservations', [PublicReservationController::cl
 
 Route::get('r/{restaurant:slug}/reservations/thanks', [PublicReservationController::class, 'thanks'])
     ->name('public.reservations.thanks');
+
+// Public, login-less GDPR self-service (PRD-015). Signed link from the
+// confirmation mail; the signature is the only guard (no auth, scoped by id).
+Route::get('gdpr/{reservation}', [GdprSelfServiceController::class, 'show'])
+    ->whereNumber('reservation')
+    ->middleware('signed')
+    ->name('gdpr.self-service');
+
+Route::post('gdpr/{reservation}/delete', [GdprSelfServiceController::class, 'delete'])
+    ->whereNumber('reservation')
+    ->middleware('signed')
+    ->name('gdpr.self-service.delete');
 
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';

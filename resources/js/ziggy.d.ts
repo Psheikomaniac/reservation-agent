@@ -11,6 +11,8 @@ declare module 'ziggy-js' {
             "required": true
         }
     ],
+    "reservations.quick.create": [],
+    "reservations.quick.store": [],
     "reservations.show": [
         {
             "name": "reservation",
@@ -24,6 +26,7 @@ declare module 'ziggy-js' {
         }
     ],
     "reservations.bulk-status": [],
+    "reservations.bulk-delete": [],
     "reservation-replies.approve": [
         {
             "name": "reply",
@@ -88,6 +91,20 @@ declare module 'ziggy-js' {
             "name": "restaurant",
             "required": true,
             "binding": "slug"
+        }
+    ],
+    "gdpr.self-service": [
+        {
+            "name": "reservation",
+            "required": true,
+            "binding": "id"
+        }
+    ],
+    "gdpr.self-service.delete": [
+        {
+            "name": "reservation",
+            "required": true,
+            "binding": "id"
         }
     ],
     "profile.edit": [],

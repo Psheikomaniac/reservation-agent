@@ -44,6 +44,7 @@ class Restaurant extends Model
         'send_mode_changed_at',
         'send_mode_changed_by',
         'slot_buffer_minutes',
+        'web_sync_confirm_enabled',
     ];
 
     /**
@@ -72,6 +73,7 @@ class Restaurant extends Model
             'auto_send_min_lead_time_minutes' => 'integer',
             'send_mode_changed_at' => 'datetime',
             'slot_buffer_minutes' => 'integer',
+            'web_sync_confirm_enabled' => 'boolean',
         ];
     }
 

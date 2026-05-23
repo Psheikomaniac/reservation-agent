@@ -104,4 +104,14 @@ class RestaurantTest extends TestCase
         $this->assertNull($restaurant->fresh()->imap_password);
         $this->assertNull(DB::table('restaurants')->where('id', $restaurant->id)->value('imap_password'));
     }
+
+    public function test_web_sync_confirm_enabled_defaults_to_false_and_is_a_fillable_boolean(): void
+    {
+        $default = Restaurant::factory()->create()->fresh();
+        $this->assertFalse($default->web_sync_confirm_enabled);
+        $this->assertIsBool($default->web_sync_confirm_enabled);
+
+        $enabled = Restaurant::factory()->create(['web_sync_confirm_enabled' => true]);
+        $this->assertTrue($enabled->fresh()->web_sync_confirm_enabled);
+    }
 }

@@ -190,4 +190,14 @@ class ReservationReplyTest extends TestCase
         $this->assertNotNull($fresh->approved_at, 'approved_at audit timestamp must remain');
         $this->assertNotNull($fresh->sent_at, 'sent_at audit timestamp must remain');
     }
+
+    public function test_sync_confirm_defaults_to_false_and_is_a_fillable_boolean(): void
+    {
+        $default = ReservationReply::factory()->create()->fresh();
+        $this->assertFalse($default->sync_confirm);
+        $this->assertIsBool($default->sync_confirm);
+
+        $synced = ReservationReply::factory()->create(['sync_confirm' => true]);
+        $this->assertTrue($synced->fresh()->sync_confirm);
+    }
 }

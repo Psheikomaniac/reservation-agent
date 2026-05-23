@@ -54,7 +54,7 @@ export interface User {
 
 export type BreadcrumbItemType = BreadcrumbItem;
 
-export type ReservationStatus = 'new' | 'in_review' | 'replied' | 'confirmed' | 'declined' | 'cancelled';
+export type ReservationStatus = 'new' | 'in_review' | 'replied' | 'confirmed' | 'declined' | 'cancelled' | 'waitlisted';
 export type ReservationSource = 'web_form' | 'email';
 
 export interface ReservationRequestRow {
@@ -125,6 +125,19 @@ export interface DayAvailability {
     slots: AvailabilitySlot[];
     total_capacity: number;
     reserved_seats: number;
+}
+
+export interface TableCombination {
+    primary_table_id: number;
+    table_ids: number[];
+    total_seats: number;
+}
+
+export interface QuickAvailability {
+    state: SlotState;
+    suggested_table_id: number | null;
+    combination: TableCombination | null;
+    alternative_slots: Array<{ date: string; time: string }>;
 }
 
 export interface DashboardFilters {

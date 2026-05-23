@@ -125,6 +125,19 @@ class SlotAvailabilityTest extends TestCase
         $this->assertSame(SlotState::Free, $result->state);
     }
 
+    public function test_does_not_count_waitlisted_reservations_as_occupying(): void
+    {
+        // PRD-013: waitlisted requests are parked, not seated — they must never
+        // occupy a table, otherwise the slot would look full to the very waitlist
+        // entry that is waiting for it to free up.
+        $table = Table::factory()->for($this->restaurant)->create(['seats' => 4]);
+        $this->occupy($table, '2026-06-15 19:00', ReservationStatus::Waitlisted);
+
+        $result = $this->slot('2026-06-15 19:00', partySize: 4);
+
+        $this->assertSame(SlotState::Free, $result->state);
+    }
+
     public function test_ignores_inactive_tables(): void
     {
         Table::factory()->for($this->restaurant)->inactive()->create(['seats' => 8]);
