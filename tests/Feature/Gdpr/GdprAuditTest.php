@@ -9,6 +9,7 @@ use App\Models\Restaurant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Schema;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class GdprAuditTest extends TestCase
@@ -28,6 +29,29 @@ class GdprAuditTest extends TestCase
         $this->assertTrue(Carbon::parse('2026-05-23 12:00:00')->equalTo($audit->created_at));
 
         Carbon::setTestNow();
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function actionProvider(): iterable
+    {
+        yield 'view' => [GdprAudit::ACTION_VIEW];
+        yield 'delete' => [GdprAudit::ACTION_DELETE];
+        yield 'owner_bulk_delete' => [GdprAudit::ACTION_OWNER_BULK_DELETE];
+    }
+
+    #[DataProvider('actionProvider')]
+    public function test_record_persists_each_action_constant(string $action): void
+    {
+        $restaurant = Restaurant::factory()->create();
+
+        GdprAudit::record($action, $restaurant->id);
+
+        $this->assertDatabaseHas('gdpr_audits', [
+            'action' => $action,
+            'restaurant_id' => $restaurant->id,
+        ]);
     }
 
     public function test_the_table_has_no_pii_columns(): void
