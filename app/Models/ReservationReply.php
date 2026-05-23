@@ -38,6 +38,7 @@ class ReservationReply extends Model
         'shadow_was_modified',
         'auto_send_decision',
         'auto_send_scheduled_for',
+        'sync_confirm',
     ];
 
     /**
@@ -58,6 +59,7 @@ class ReservationReply extends Model
             'shadow_was_modified' => 'boolean',
             'auto_send_decision' => 'array',
             'auto_send_scheduled_for' => 'datetime',
+            'sync_confirm' => 'boolean',
         ];
     }
 
