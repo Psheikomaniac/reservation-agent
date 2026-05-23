@@ -42,7 +42,7 @@ class GdprSelfServiceTest extends TestCase
         $this->get($this->signedShowUrl($reservation))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
-                ->component('Public/GdprSelfService', false)
+                ->component('Public/GdprSelfService')
                 ->where('reservation.guest_name', 'Anna Müller')
                 ->where('reservation.guest_email', 'anna@gmail.com')
                 ->where('reservation.party_size', 4)
