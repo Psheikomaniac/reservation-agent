@@ -25,6 +25,10 @@ class SendModeSettingsUpdateRequest extends FormRequest
             'send_mode' => ['required', 'string', Rule::enum(SendMode::class)],
             'auto_send_party_size_max' => ['required', 'integer', 'min:1', 'max:50'],
             'auto_send_min_lead_time_minutes' => ['required', 'integer', 'min:0', 'max:1440'],
+            // PRD-014 web sync-confirm opt-in. Optional so the field can be
+            // added to the shared form without forcing every caller to send it;
+            // the controller only persists it when present.
+            'web_sync_confirm_enabled' => ['sometimes', 'boolean'],
         ];
     }
 }

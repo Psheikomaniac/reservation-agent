@@ -55,6 +55,7 @@ class SendModeSettingsController extends Controller
             'partySizeMax' => $restaurant->auto_send_party_size_max,
             'minLeadTimeMinutes' => $restaurant->auto_send_min_lead_time_minutes,
             'sendModeChangedAt' => $restaurant->send_mode_changed_at?->toIso8601String(),
+            'webSyncConfirmEnabled' => $restaurant->web_sync_confirm_enabled,
             'shadowStats' => $this->shadowStats($restaurant),
         ]);
     }
@@ -82,6 +83,12 @@ class SendModeSettingsController extends Controller
         if ($modeChanged) {
             $payload['send_mode_changed_at'] = now();
             $payload['send_mode_changed_by'] = $user->id;
+        }
+
+        // PRD-014 toggle: only touch the flag when the form sends it, so other
+        // callers of this endpoint leave it untouched.
+        if ($request->has('web_sync_confirm_enabled')) {
+            $payload['web_sync_confirm_enabled'] = $request->boolean('web_sync_confirm_enabled');
         }
 
         $restaurant->update($payload);
