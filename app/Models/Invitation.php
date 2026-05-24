@@ -37,6 +37,16 @@ final class Invitation extends Model
     ];
 
     /**
+     * Never serialize the token hash — invitations may later be surfaced in
+     * Inertia props (team lists), and the hash has no place in the browser.
+     *
+     * @var list<string>
+     */
+    protected $hidden = [
+        'token',
+    ];
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array

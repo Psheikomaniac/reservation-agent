@@ -53,6 +53,14 @@ final class InvitationModelTest extends TestCase
         $this->assertFalse($accepted->isPending());
     }
 
+    public function test_the_token_hash_is_never_serialized(): void
+    {
+        $invitation = Invitation::factory()->for(Restaurant::factory())->create();
+
+        $this->assertArrayNotHasKey('token', $invitation->toArray());
+        $this->assertArrayNotHasKey('token', json_decode((string) json_encode($invitation), true));
+    }
+
     public function test_find_by_token_ignores_the_tenant_scope(): void
     {
         // No authenticated user (acceptance happens before login), so the
