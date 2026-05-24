@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Settings\AiKeySettingsController;
 use App\Http\Controllers\Settings\NotificationSettingsController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
@@ -30,4 +31,9 @@ Route::middleware('auth')->group(function () {
         ->name('settings.notifications.edit');
     Route::put('settings/notifications', [NotificationSettingsController::class, 'update'])
         ->name('settings.notifications.update');
+
+    Route::get('settings/ai-key', [AiKeySettingsController::class, 'edit'])
+        ->name('settings.ai-key.edit');
+    Route::patch('settings/ai-key', [AiKeySettingsController::class, 'update'])
+        ->name('settings.ai-key.update');
 });
