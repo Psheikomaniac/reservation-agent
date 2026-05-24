@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Models\Invitation;
 use App\Models\ReservationRequest;
 use App\Models\Restaurant;
 use App\Models\Table;
+use App\Policies\InvitationPolicy;
 use App\Policies\ReservationRequestPolicy;
 use App\Policies\RestaurantPolicy;
 use App\Policies\TablePolicy;
@@ -22,6 +24,7 @@ final class AuthServiceProvider extends ServiceProvider
         Restaurant::class => RestaurantPolicy::class,
         ReservationRequest::class => ReservationRequestPolicy::class,
         Table::class => TablePolicy::class,
+        Invitation::class => InvitationPolicy::class,
     ];
 
     public function boot(): void
