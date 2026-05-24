@@ -36,9 +36,16 @@ class Restaurant extends Model
         'opening_hours',
         'tonality',
         'onboarding_completed_at',
+        'openai_api_key',
         'imap_host',
         'imap_username',
         'imap_password',
+        'smtp_host',
+        'smtp_port',
+        'smtp_username',
+        'smtp_password',
+        'smtp_from_address',
+        'smtp_from_name',
         'send_mode',
         'auto_send_party_size_max',
         'auto_send_min_lead_time_minutes',
@@ -54,7 +61,9 @@ class Restaurant extends Model
      * @var list<string>
      */
     protected $hidden = [
+        'openai_api_key',
         'imap_password',
+        'smtp_password',
     ];
 
     /**
@@ -69,7 +78,10 @@ class Restaurant extends Model
             'opening_hours' => 'array',
             'tonality' => Tonality::class,
             'onboarding_completed_at' => 'datetime',
+            'openai_api_key' => 'encrypted',
             'imap_password' => 'encrypted',
+            'smtp_password' => 'encrypted',
+            'smtp_port' => 'integer',
             'send_mode' => SendMode::class,
             'auto_send_party_size_max' => 'integer',
             'auto_send_min_lead_time_minutes' => 'integer',
