@@ -44,8 +44,12 @@ Zweitens: Die Oberfläche ist die funktionale V1-Foundation-UI ohne Gestaltungs-
 - Anwenden auf: Onboarding-Wizard (Phase 1), Dashboard + öffentliche Reservierungs-/Bestätigungsseiten (Phase 2).
 
 **Phase 1b (eigene Welle): per-Restaurant-Konfiguration**
-- OpenAI-Key BYOK pro Restaurant (`restaurants.openai_api_key`, Encrypted Cast); Generator wählt den Key pro Restaurant, Fallback auf den globalen `.env`-Key.
-- E-Mail pro Restaurant: Die IMAP-Empfangs-Spalten (`imap_host/username/password`, Passwort `encrypted`) **existieren bereits** pro Restaurant — Phase 1b schaltet sie im Wizard frei und ergänzt den bislang fehlenden **SMTP-Versand** (neue Encrypted-Spalten). Bis dahin bleibt der Versand global (`.env`); die Wizard-Schritte zeigen „später/global einrichten".
+
+Alle drei Konfigurationen leben auf **Owner-only Settings-Seiten** (Muster `SendModeSettingsController` + Policy `manageIntegrations`); Secrets werden im UI **maskiert** (letzte 4 Zeichen, zentraler Helper) und nie im Klartext zurückgegeben. Bis ein Restaurant etwas konfiguriert, gilt der globale `.env`-Fallback.
+
+- **OpenAI-Key BYOK** pro Restaurant (`restaurants.openai_api_key`, Encrypted Cast). Ein `OpenAiClientFactory(?Restaurant)` wählt den Key pro Restaurant, Fallback auf den globalen `.env`-Key; `OpenAiReplyGenerator` baut den Client darüber. `OpenAiKeyHealth` wird **per Restaurant** geschlüsselt (ein abgelehnter Restaurant-Key flaggt nur dieses Restaurant; der globale Key behält seine globale Health).
+- **SMTP-Versand** pro Restaurant (neue Encrypted-Spalten `smtp_host/port/username/password` + eigene Absenderadresse `smtp_from_address/smtp_from_name`). `SendReservationReplyJob` baut zur Laufzeit einen Restaurant-Mailer (`Mail::mailer('restaurant-'.$id)`) mit Fallback auf den globalen `.env`-Mailer + globale `mail.from`.
+- **IMAP-Empfang** pro Restaurant: Die Spalten (`imap_host/username/password`, Passwort `encrypted`) **existieren bereits** — Phase 1b ergänzt die fehlende **Owner-Settings-Seite** zum Konfigurieren (bisher nur per Seeder/Tinker). `FetchReservationEmailsJob`/`WebklexImapMailboxFactory` bleiben unverändert.
 
 ### Out of Scope (Vision – dokumentiert, nicht gebaut)
 
@@ -67,9 +71,14 @@ Zweitens: Die Oberfläche ist die funktionale V1-Foundation-UI ohne Gestaltungs-
 | `invitations` | Tabelle | `id`, `restaurant_id` (fk), `email`, `role` (enum), `token` (gehasht), `expires_at`, `accepted_at` (nullable), `created_at` |
 | `restaurants.onboarding_completed_at` | datetime, nullable | „live", wenn gesetzt |
 | `users.password` | nullable | bis Einladung angenommen; Annahme setzt das Passwort |
-| `restaurants.openai_api_key` | string, encrypted, nullable | Phase 1b (BYOK) |
-| `restaurants.imap_*` | **bereits vorhanden** | `imap_host/username/password` (Passwort `encrypted`) existieren schon pro Restaurant — im Wizard nur freischalten, nicht neu bauen |
-| `restaurants` SMTP-Versand-Config | encrypted, nullable | Phase 1b — neue Spalten oder `restaurant_mail_settings` (nur IMAP-Empfang ist da, Versand fehlt) |
+| `restaurants.openai_api_key` | string, encrypted, nullable | Phase 1b (BYOK); Fallback global |
+| `restaurants.imap_*` | **bereits vorhanden** | `imap_host/username/password` (Passwort `encrypted`) existieren schon — Phase 1b ergänzt nur die Settings-UI |
+| `restaurants.smtp_host` | string, nullable | Phase 1b |
+| `restaurants.smtp_port` | unsignedInteger, nullable | Phase 1b |
+| `restaurants.smtp_username` | string, nullable | Phase 1b |
+| `restaurants.smtp_password` | string, **encrypted**, nullable | Phase 1b |
+| `restaurants.smtp_from_address` | string, nullable | Phase 1b; Fallback `mail.from.address` |
+| `restaurants.smtp_from_name` | string, nullable | Phase 1b; Fallback `mail.from.name` |
 
 Jede Migration `up()` **und** `down()`; bestehende Migrationen werden nicht rückwirkend geändert.
 
