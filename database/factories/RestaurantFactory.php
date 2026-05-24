@@ -43,4 +43,26 @@ class RestaurantFactory extends Factory
             'imap_password' => null,
         ];
     }
+
+    /**
+     * A restaurant that has completed onboarding (is "live").
+     */
+    public function onboarded(): static
+    {
+        return $this->state(fn () => [
+            'onboarding_completed_at' => now(),
+        ]);
+    }
+
+    /**
+     * A freshly provisioned restaurant before the wizard: no opening hours,
+     * not yet live.
+     */
+    public function pendingOnboarding(): static
+    {
+        return $this->state(fn () => [
+            'onboarding_completed_at' => null,
+            'opening_hours' => [],
+        ]);
+    }
 }
