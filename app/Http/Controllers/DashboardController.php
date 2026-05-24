@@ -12,6 +12,7 @@ use App\Http\Resources\ReservationRequestDetailResource;
 use App\Http\Resources\ReservationRequestResource;
 use App\Models\ReservationRequest;
 use App\Services\Waitlist\WaitlistBanner;
+use App\Support\OnboardingProgress;
 use App\Support\OpenAiKeyHealth;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
@@ -25,7 +26,8 @@ final class DashboardController extends Controller
     {
         $validated = $request->validated();
         $selectedId = isset($validated['selected']) ? (int) $validated['selected'] : null;
-        $restaurantId = $request->user()?->restaurant_id;
+        $restaurant = $request->user()?->restaurant;
+        $restaurantId = $restaurant?->id;
 
         $filterQuery = Arr::except($request->query(), ['selected']);
         $filters = $filterQuery === []
@@ -71,6 +73,12 @@ final class DashboardController extends Controller
             // default — so the operator always sees that auto-send is
             // armed and where to flip the killswitch.
             'sendMode' => $request->user()?->restaurant?->send_mode->value,
+            // PRD-016: optional onboarding steps the owner skipped (e.g. team),
+            // surfaced as dismissible reminder cards. Empty when none / no
+            // restaurant. Refreshed by the existing dashboard poll.
+            'onboardingReminders' => $restaurant !== null
+                ? OnboardingProgress::for($restaurant)->pendingOptionalSteps()
+                : [],
         ]);
     }
 
