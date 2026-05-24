@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Settings\AiKeySettingsController;
+use App\Http\Controllers\Settings\ImapSettingsController;
 use App\Http\Controllers\Settings\NotificationSettingsController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
@@ -42,4 +43,9 @@ Route::middleware('auth')->group(function () {
         ->name('settings.smtp.edit');
     Route::patch('settings/smtp', [SmtpSettingsController::class, 'update'])
         ->name('settings.smtp.update');
+
+    Route::get('settings/imap', [ImapSettingsController::class, 'edit'])
+        ->name('settings.imap.edit');
+    Route::patch('settings/imap', [ImapSettingsController::class, 'update'])
+        ->name('settings.imap.update');
 });
