@@ -35,6 +35,15 @@ export interface Restaurant {
     name: string;
     timezone: string;
     tonality: 'formal' | 'casual' | 'family';
+    onboarding_completed_at?: string | null;
+}
+
+export type OnboardingStep = 'restaurant' | 'hours' | 'tables' | 'tonality' | 'team';
+
+export interface OnboardingProgress {
+    coreComplete: boolean;
+    nextCoreStep: 'restaurant' | 'hours' | 'tables' | null;
+    steps: Record<OnboardingStep, boolean>;
 }
 
 export type UserRole = 'owner' | 'staff';
