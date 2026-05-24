@@ -40,12 +40,12 @@ Zweitens: Die Oberfläche ist die funktionale V1-Foundation-UI ohne Gestaltungs-
 - **Onboarding-Gating:** Ein Owner ohne vollständigen Pflicht-Kern wird auf den Wizard geleitet statt auf ein leeres/kaputtes Dashboard.
 
 **Design-System (Richtung C)**
-- Zentrale Design-Tokens (Tailwind v4 `@theme` / CSS-Variablen): Palette (dunkle Topbar, Status-Farben), Spacing, Radius, Typo-Scale.
+- Zentrale Design-Tokens als CSS-Variablen im bestehenden `@layer base`-Muster (Tailwind **v3.4**, shadcn/Reka-konform — siehe `resources/css/app.css`; **kein** v4-`@theme`): Palette (dunkle Topbar, Status-Farben), Spacing, Radius, Typo-Scale.
 - Anwenden auf: Onboarding-Wizard (Phase 1), Dashboard + öffentliche Reservierungs-/Bestätigungsseiten (Phase 2).
 
 **Phase 1c (eigene Welle): per-Restaurant-Konfiguration**
 - OpenAI-Key BYOK pro Restaurant (`restaurants.openai_api_key`, Encrypted Cast); Generator wählt den Key pro Restaurant, Fallback auf den globalen `.env`-Key.
-- E-Mail-Anbindung pro Restaurant (IMAP/SMTP, Encrypted Casts). Bis dahin bleibt Mail global (`.env`); die Wizard-Schritte zeigen „später/global einrichten".
+- E-Mail pro Restaurant: Die IMAP-Empfangs-Spalten (`imap_host/username/password`, Passwort `encrypted`) **existieren bereits** pro Restaurant — Phase 1c schaltet sie im Wizard frei und ergänzt den bislang fehlenden **SMTP-Versand** (neue Encrypted-Spalten). Bis dahin bleibt der Versand global (`.env`); die Wizard-Schritte zeigen „später/global einrichten".
 
 ### Out of Scope (Vision – dokumentiert, nicht gebaut)
 
@@ -68,13 +68,18 @@ Zweitens: Die Oberfläche ist die funktionale V1-Foundation-UI ohne Gestaltungs-
 | `restaurants.onboarding_completed_at` | datetime, nullable | „live", wenn gesetzt |
 | `users.password` | nullable | bis Einladung angenommen; Annahme setzt das Passwort |
 | `restaurants.openai_api_key` | string, encrypted, nullable | Phase 1c (BYOK) |
-| `restaurants` Mail-Config (IMAP/SMTP) | encrypted, nullable | Phase 1c — Spalten oder `restaurant_mail_settings` |
+| `restaurants.imap_*` | **bereits vorhanden** | `imap_host/username/password` (Passwort `encrypted`) existieren schon pro Restaurant — im Wizard nur freischalten, nicht neu bauen |
+| `restaurants` SMTP-Versand-Config | encrypted, nullable | Phase 1c — neue Spalten oder `restaurant_mail_settings` (nur IMAP-Empfang ist da, Versand fehlt) |
 
 Jede Migration `up()` **und** `down()`; bestehende Migrationen werden nicht rückwirkend geändert.
 
 ### Provisionierung
 
 `RestaurantProvisioner`-Service: `provision(name, slug, email, timezone): Invitation`. Validierung (Slug/Email eindeutig). Wird vom Artisan-Command genutzt; die spätere Super-Admin-UI ruft denselben Service.
+
+**NOT-NULL-Defaults:** Die bestehende `restaurants`-Tabelle hat `capacity`, `opening_hours` (JSON) und `tonality` als NOT NULL **ohne** Default. Da der Provisioner das Restaurant *vor* dem Wizard anlegt, seedet er diese Felder mit Platzhaltern (`capacity = 0`, `opening_hours = {}`/leeres Schema, `tonality = ` Default-Enum); der Wizard-Pflicht-Kern überschreibt sie. Bewusste Entscheidung **gegen** eine nullable-Migration, da die Felder nach Onboarding ohnehin gesetzt sind.
+
+**Owner-Rolle:** Der provisionierte User wird explizit mit `role = owner` angelegt (DB-Default ist `staff`) — sonst bekäme der „Owner" 403 bei Owner-Funktionen, also genau das Ausgangsproblem.
 
 ### Invitation-Flow
 
@@ -87,36 +92,40 @@ Jede Migration `up()` **und** `down()`; bestehende Migrationen werden nicht rüc
 - Stammdaten: Slug-Eindeutigkeit, Zeitzonen-Whitelist. Tische: bestehende Table-CRUD-Logik (PRD-011). Öffnungszeiten: bestehendes `opening_hours`-JSON-Schema.
 - Gemeinsame FormRequests/Komponenten zwischen Wizard und späteren Settings-Seiten, um Doppelpflege zu vermeiden.
 
+### Onboarding-Gating
+
+Middleware (z. B. `EnsureOnboardingComplete`) auf den authentifizierten App-Routes: Ein Owner mit Restaurant ohne `onboarding_completed_at` wird auf den Wizard umgeleitet. Ausgenommen: die Wizard-Routes selbst, Logout und die vom Wizard wiederverwendeten Settings-Aktionen. Staff eines noch nicht „live"-Restaurants sieht einen Platzhalter-Hinweis (kein Wizard — nur der Owner richtet ein).
+
 ### Design-Tokens
 
-- Tokens zentral; Komponenten konsumieren Variablen (kein Hardcoding). Dark Topbar, Status-Farben (`new`/`in_review`/`replied`/`confirmed`/`declined`/`waitlisted`), Dichte/Spacing/Typo. Phase 2 ersetzt Hardcoded-Styles der Top-Surfaces durch Tokens.
+- Tokens zentral als CSS-Variablen im bestehenden `@layer base`-Muster (Tailwind v3.4, **kein** v4-`@theme`); Komponenten konsumieren Variablen (kein Hardcoding). Dark Topbar, Status-Farben für **alle 7 Stati** (`new`/`in_review`/`replied`/`confirmed`/`declined`/`cancelled`/`waitlisted`), Dichte/Spacing/Typo. Phase 2 ersetzt Hardcoded-Styles der Top-Surfaces durch Tokens.
 
 ### Phasen
 
 - **Phase 1:** Tokens + Onboarding (Command, Invitation, Wizard Pflicht-Kern + Tonalität + Team) im C-Look.
-- **Phase 1c:** per-Restaurant BYOK + E-Mail.
+- **Phase 1c:** per-Restaurant BYOK + SMTP-Versand. **Eigenes Epic mit eigenen Akzeptanzkriterien** — pilot-optional, blockiert Phase 1/2 nicht (global bleibt nutzbar).
 - **Phase 2:** Restyle Dashboard + öffentliche Reservierungs-/Bestätigungsseiten.
 
 ---
 
 ## Akzeptanzkriterien
 
-- [ ] `restaurant:provision` legt Restaurant + Owner + Invitation an und gibt den signierten Link aus; doppelter Slug/Email → klarer Fehler.
+- [ ] `restaurant:provision` legt Restaurant (inkl. NOT-NULL-Defaults für `capacity`/`opening_hours`/`tonality`) + Owner (`role=owner`) + Invitation an und gibt den signierten Link aus; doppelter Slug/Email → klarer Fehler.
 - [ ] Einladungs-Link: gültig → Passwort setzen → eingeloggt; abgelaufen/bereits angenommen → klare Meldung, kein Zugriff.
 - [ ] Owner ohne vollständigen Pflicht-Kern wird auf den Wizard geleitet (Gating), nicht auf ein leeres Dashboard.
 - [ ] Pflicht-Kern vollständig → `onboarding_completed_at` gesetzt → Dashboard „live".
 - [ ] Optionale Schritte überspringbar; übersprungene erscheinen als Dashboard-Erinnerung.
 - [ ] Team-Einladung erzeugt Staff-Invitation über denselben Flow; Cross-Tenant unmöglich.
 - [ ] Migrationen vor/zurück lauffähig; keine bestehende Migration geändert.
-- [ ] Design-Tokens zentral; Wizard + Dashboard + öffentliche Reservierungs-/Bestätigungsseiten in Richtung C; keine funktionale Regression.
-- [ ] Phase 1c: OpenAI-Key pro Restaurant wird vom Generator verwendet (Fallback global); E-Mail-Config encrypted, nie im Klartext geloggt/ausgegeben.
+- [ ] Design-Tokens zentral (CSS-Variablen im `@layer base`-Muster, kein v4-`@theme`), alle 7 Status-Farben inkl. `cancelled`; Wizard + Dashboard + öffentliche Reservierungs-/Bestätigungsseiten in Richtung C; keine funktionale Regression.
+- [ ] Phase 1c: OpenAI-Key pro Restaurant wird vom Generator verwendet (Fallback global); SMTP-Versand-Config encrypted, nie im Klartext geloggt/ausgegeben.
 - [ ] `./vendor/bin/pint --test`, `npm run lint`, `npm run format:check`, `npm run build` ohne Findings; Ziggy bei neuen Routes regeneriert.
 
 ---
 
 ## Tests
 
-- **Command:** provisioniert korrekt; Duplikate (Slug/Email) abgelehnt.
+- **Command:** provisioniert korrekt (Owner mit `role=owner`, NOT-NULL-Defaults gesetzt); Duplikate (Slug/Email) abgelehnt.
 - **Invitation:** Annahme gültig/abgelaufen/doppelt; Token gehasht; Cross-Tenant abgewiesen.
 - **Wizard:** Pflicht-Schritt-Validierung + Persistenz; Gating-Redirect; `onboarding_completed_at`-Logik; Skip + Erinnerung.
 - **Team-Invite:** Owner darf, Staff nicht; fremdes Restaurant unmöglich.
@@ -132,6 +141,7 @@ Jede Migration `up()` **und** `down()`; bestehende Migrationen werden nicht rüc
 - **Wizard ↔ Settings-Duplizierung:** beide bearbeiten dieselben Felder — gemeinsame FormRequests/Komponenten nutzen.
 - **User ohne Passwort:** `password`-nullable berührt Auth-Annahmen (Login/Reset) — per Tests absichern.
 - **Design-Regression:** Token-Umstellung kann bestehende Screens optisch verschieben — Phase 2 schrittweise, mit visueller Kontrolle.
+- **Tailwind-Version:** Projekt läuft auf **Tailwind v3.4** (`@tailwind`-Direktiven + HSL-Variablen in `@layer base`), nicht v4. Token-Arbeit folgt diesem Muster — **kein** `@theme`. Die Stack-Tabelle in `CLAUDE.md` nennt fälschlich „Tailwind v4"; separat korrigieren (außerhalb dieses PRDs).
 - **PRD-Nummer:** belegt 016 (vorgezogen); V4-Bullets bei Ausplanung neu nummerieren.
 
 ---
