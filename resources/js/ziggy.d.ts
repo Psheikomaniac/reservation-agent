@@ -2,6 +2,18 @@
 declare module 'ziggy-js' {
   interface RouteList {
     "home": [],
+    "onboarding.accept": [
+        {
+            "name": "token",
+            "required": true
+        }
+    ],
+    "onboarding.accept.store": [
+        {
+            "name": "token",
+            "required": true
+        }
+    ],
     "dashboard": [],
     "analytics.index": [],
     "exports.store": [],
