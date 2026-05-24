@@ -51,3 +51,6 @@ Homestead.yaml
 
 # Tooling scratch
 .playwright-mcp/
+
+# Visual brainstorming companion (local scratch)
+.superpowers/
