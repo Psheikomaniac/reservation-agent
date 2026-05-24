@@ -38,6 +38,7 @@ class DatabaseSeeder extends Seeder
                     'sun' => [['from' => '11:30', 'to' => '15:00']],
                 ],
                 'tonality' => Tonality::Casual,
+                'onboarding_completed_at' => now(),
             ]
         );
 

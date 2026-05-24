@@ -21,12 +21,13 @@ final class OnboardingSchemaTest extends TestCase
         $this->assertNull($user->fresh()->password);
     }
 
-    public function test_restaurants_onboarding_completed_at_defaults_to_null(): void
+    public function test_restaurants_onboarding_completed_at_is_nullable(): void
     {
-        $restaurant = Restaurant::factory()->create();
+        $this->assertTrue(Schema::hasColumn('restaurants', 'onboarding_completed_at'));
+
+        $restaurant = Restaurant::factory()->pendingOnboarding()->create();
 
         $this->assertNull($restaurant->fresh()->onboarding_completed_at);
-        $this->assertTrue(Schema::hasColumn('restaurants', 'onboarding_completed_at'));
     }
 
     public function test_invitations_table_has_the_expected_columns(): void
