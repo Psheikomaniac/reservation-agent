@@ -14,4 +14,10 @@ use Illuminate\Foundation\Events\Dispatchable;
 final class OpenAiAuthenticationFailed
 {
     use Dispatchable;
+
+    /**
+     * @param  int|null  $restaurantId  the restaurant whose key was rejected,
+     *                                  or null for the global key.
+     */
+    public function __construct(public readonly ?int $restaurantId = null) {}
 }
