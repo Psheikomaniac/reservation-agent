@@ -138,6 +138,8 @@ declare module 'ziggy-js' {
     "settings.notifications.update": [],
     "settings.ai-key.edit": [],
     "settings.ai-key.update": [],
+    "settings.smtp.edit": [],
+    "settings.smtp.update": [],
     "register": [],
     "login": [],
     "password.request": [],
