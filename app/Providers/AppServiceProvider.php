@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Services\AI\Contracts\ReplyGenerator;
+use App\Services\AI\OpenAiClientFactory;
 use App\Services\AI\OpenAiReplyGenerator;
 use App\Services\Email\Contracts\ImapMailboxFactory;
 use App\Services\Email\WebklexImapMailboxFactory;
@@ -23,6 +24,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->bind(ImapMailboxFactory::class, WebklexImapMailboxFactory::class);
         $this->app->bind(ExportGenerator::class, FormatRoutingExportGenerator::class);
+        $this->app->singleton(OpenAiClientFactory::class);
 
         // The generator needs two timeout regimes: the default 30 s client
         // for the async job (`generate`), and a short-budget client for the
