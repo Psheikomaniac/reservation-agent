@@ -43,6 +43,19 @@ html {
         --sidebar-accent-foreground: 0 0% 30%;
         --sidebar-border: 0 0% 91%;
         --sidebar-ring: 217.2 91.2% 59.8%;
+
+        /* Direction C — reservation status tokens (HSL triplets). */
+        --status-new: 217 91% 60%;
+        --status-in-review: 243 75% 59%;
+        --status-replied: 270 67% 60%;
+        --status-confirmed: 152 60% 42%;
+        --status-declined: 350 75% 55%;
+        --status-cancelled: 240 5% 50%;
+        --status-waitlisted: 38 92% 50%;
+
+        /* Dark operator topbar (dark in both themes by design). */
+        --topbar: 222 47% 11%;
+        --topbar-foreground: 0 0% 98%;
     }
 
     .dark {
@@ -78,6 +91,19 @@ html {
         --sidebar-accent-foreground: 240 4.8% 95.9%;
         --sidebar-border: 0 0% 15.9%;
         --sidebar-ring: 217.2 91.2% 59.8%;
+
+        /* Direction C — reservation status tokens (HSL triplets). */
+        --status-new: 217 91% 60%;
+        --status-in-review: 243 75% 59%;
+        --status-replied: 270 67% 60%;
+        --status-confirmed: 152 60% 42%;
+        --status-declined: 350 75% 55%;
+        --status-cancelled: 240 5% 50%;
+        --status-waitlisted: 38 92% 50%;
+
+        /* Dark operator topbar. */
+        --topbar: 222 47% 11%;
+        --topbar-foreground: 0 0% 98%;
     }
 }
 
