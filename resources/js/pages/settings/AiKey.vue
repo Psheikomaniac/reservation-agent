@@ -15,7 +15,7 @@ interface Props {
     masked: string | null;
 }
 
-const props = defineProps<Props>();
+defineProps<Props>();
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'OpenAI-Schlüssel', href: '/settings/ai-key' }];
 
