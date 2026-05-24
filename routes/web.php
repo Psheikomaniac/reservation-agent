@@ -40,6 +40,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('onboarding/team', [OnboardingWizardController::class, 'storeStaffInvite'])->name('onboarding.team.store');
 });
 
+// Placeholder for staff of a restaurant whose owner has not finished onboarding.
+Route::get('onboarding/pending', fn () => Inertia::render('Onboarding/Pending'))
+    ->middleware('auth')
+    ->name('onboarding.pending');
+
 Route::get('dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth', 'verified'])
     ->name('dashboard');

@@ -41,6 +41,9 @@ class RestaurantFactory extends Factory
             'imap_host' => null,
             'imap_username' => null,
             'imap_password' => null,
+            // Test restaurants are operational by default; onboarding tests opt
+            // into the pre-live state explicitly via pendingOnboarding().
+            'onboarding_completed_at' => now(),
         ];
     }
 
