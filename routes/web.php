@@ -5,6 +5,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExportController;
 use App\Http\Controllers\GdprSelfServiceController;
 use App\Http\Controllers\Onboarding\AcceptInvitationController;
+use App\Http\Controllers\Onboarding\OnboardingWizardController;
 use App\Http\Controllers\PublicReservationController;
 use App\Http\Controllers\QuickReservationController;
 use App\Http\Controllers\ReservationMessagesController;
@@ -27,6 +28,16 @@ Route::middleware('guest')->group(function () {
         ->name('onboarding.accept');
     Route::post('onboarding/accept/{token}', [AcceptInvitationController::class, 'store'])
         ->name('onboarding.accept.store');
+});
+
+// Owner onboarding wizard (server-driven, one action per step).
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('onboarding', [OnboardingWizardController::class, 'show'])->name('onboarding.wizard');
+    Route::patch('onboarding/restaurant', [OnboardingWizardController::class, 'updateRestaurant'])->name('onboarding.restaurant.update');
+    Route::patch('onboarding/hours', [OnboardingWizardController::class, 'updateHours'])->name('onboarding.hours.update');
+    Route::post('onboarding/tables', [OnboardingWizardController::class, 'storeTable'])->name('onboarding.tables.store');
+    Route::patch('onboarding/tonality', [OnboardingWizardController::class, 'updateTonality'])->name('onboarding.tonality.update');
+    Route::post('onboarding/team', [OnboardingWizardController::class, 'storeStaffInvite'])->name('onboarding.team.store');
 });
 
 Route::get('dashboard', [DashboardController::class, 'index'])

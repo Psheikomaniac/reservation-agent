@@ -14,6 +14,12 @@ declare module 'ziggy-js' {
             "required": true
         }
     ],
+    "onboarding.wizard": [],
+    "onboarding.restaurant.update": [],
+    "onboarding.hours.update": [],
+    "onboarding.tables.store": [],
+    "onboarding.tonality.update": [],
+    "onboarding.team.store": [],
     "dashboard": [],
     "analytics.index": [],
     "exports.store": [],
