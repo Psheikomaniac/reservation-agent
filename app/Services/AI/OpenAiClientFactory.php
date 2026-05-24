@@ -15,8 +15,11 @@ use OpenAI\Laravel\Exceptions\ApiKeyIsMissing;
  * set and falling back to the global `.env` key otherwise. Mirrors the
  * openai-php/laravel ServiceProvider build so org/project/base-uri stay
  * honoured, and accepts an optional per-call timeout for the sync path.
+ *
+ * Intentionally non-final so the generator's unit tests can mock `clientFor`
+ * to return an `OpenAI\Testing\ClientFake`.
  */
-final class OpenAiClientFactory
+class OpenAiClientFactory
 {
     public function resolveKey(?Restaurant $restaurant): ?string
     {

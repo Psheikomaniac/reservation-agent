@@ -7,6 +7,7 @@ namespace App\Services\AI;
 use App\Exceptions\AI\OpenAiAuthenticationException;
 use App\Exceptions\AI\OpenAiRateLimitException;
 use App\Exceptions\AI\OpenAiTimeoutException;
+use App\Models\Restaurant;
 use App\Services\AI\Contracts\ReplyGenerator;
 use App\Support\OpenAiKeyHealth;
 use Closure;
@@ -48,27 +49,61 @@ final class OpenAiReplyGenerator implements ReplyGenerator
     private const float TEMPERATURE = 0.4;
 
     /**
-     * @param  (Closure(int): ClientContract)|null  $syncClientFactory
-     *                                                                  Builds a client whose HTTP timeout equals the sync hard-limit
-     *                                                                  (PRD-014). Bound in production so `generateSync` can run a
-     *                                                                  5 s-bounded call; left null in unit tests, where the injected
-     *                                                                  client (a fake) is used directly so `OpenAI::fake()` applies.
-     *                                                                  The async `generate` always uses the default 30 s `$client`.
+     * @param  ClientContract  $client  the default client, built with the
+     *                                  global `.env` key (and used as the BYOK
+     *                                  fallback / in tests).
+     * @param  (Closure(int): ClientContract)|null  $syncClientFactory  builds a
+     *                                                                  timeout-bounded global client for the
+     *                                                                  PRD-014 sync path; null in unit tests.
+     * @param  OpenAiClientFactory|null  $clientFactory  builds a client from a
+     *                                                   restaurant's own BYOK key (PRD-016 Phase
+     *                                                   1b); only consulted when the restaurant
+     *                                                   has its own key, else the default client
+     *                                                   (global key) applies.
      */
     public function __construct(
         private readonly ClientContract $client,
         private readonly LoggerInterface $logger,
         private readonly ?Closure $syncClientFactory = null,
+        private readonly ?OpenAiClientFactory $clientFactory = null,
     ) {}
+
+    /**
+     * The async client: the restaurant's BYOK client when it has its own key,
+     * otherwise the default global client.
+     */
+    private function asyncClientFor(?Restaurant $restaurant): ClientContract
+    {
+        if ($restaurant?->openai_api_key !== null && $this->clientFactory !== null) {
+            return $this->clientFactory->clientFor($restaurant);
+        }
+
+        return $this->client;
+    }
+
+    /**
+     * The sync client: the restaurant's timeout-bounded BYOK client when it has
+     * its own key, otherwise the timeout-bounded global client.
+     */
+    private function syncClientFor(?Restaurant $restaurant, int $timeout): ClientContract
+    {
+        if ($restaurant?->openai_api_key !== null && $this->clientFactory !== null) {
+            return $this->clientFactory->clientFor($restaurant, $timeout);
+        }
+
+        return $this->syncClientFactory !== null
+            ? ($this->syncClientFactory)($timeout)
+            : $this->client;
+    }
 
     /**
      * @param  array<string, mixed>  $context  the JSON produced by
      *                                         ReservationContextBuilder::build()
      */
-    public function generate(array $context): string
+    public function generate(array $context, ?Restaurant $restaurant = null): string
     {
         try {
-            $response = $this->client->chat()->create($this->chatCreatePayload($context));
+            $response = $this->asyncClientFor($restaurant)->chat()->create($this->chatCreatePayload($context));
 
             $content = trim((string) ($response->choices[0]->message->content ?? ''));
 
@@ -133,13 +168,10 @@ final class OpenAiReplyGenerator implements ReplyGenerator
      * @param  array<string, mixed>  $context  the JSON produced by
      *                                         ReservationContextBuilder::build()
      */
-    public function generateSync(array $context, int $timeout = 5): string
+    public function generateSync(array $context, ?Restaurant $restaurant = null, int $timeout = 5): string
     {
-        $client = $this->syncClientFactory !== null
-            ? ($this->syncClientFactory)($timeout)
-            : $this->client;
-
         try {
+            $client = $this->syncClientFor($restaurant, $timeout);
             $response = $client->chat()->create($this->chatCreatePayload($context));
 
             $content = trim((string) ($response->choices[0]->message->content ?? ''));

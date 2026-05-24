@@ -193,7 +193,7 @@ class AuditTrailTest extends TestCase
         {
             public function __construct(private readonly string $body) {}
 
-            public function generate(array $context): string
+            public function generate(array $context, ?Restaurant $restaurant = null): string
             {
                 return $this->body;
             }

@@ -121,7 +121,7 @@ final class PublicReservationController extends Controller
             // OpenAI client (the same late-resolution trick as
             // GenerateReservationReplyJob).
             $context = $this->contextBuilder->build($reservation);
-            $body = app(OpenAiReplyGenerator::class)->generateSync($context);
+            $body = app(OpenAiReplyGenerator::class)->generateSync($context, $restaurant, 5);
 
             $confirmed = DB::transaction(function () use ($reservation, $context, $body): bool {
                 // Serialize concurrent bookings for this restaurant's slot. The
