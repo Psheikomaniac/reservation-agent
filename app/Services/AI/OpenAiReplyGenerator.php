@@ -110,7 +110,7 @@ final class OpenAiReplyGenerator implements ReplyGenerator
             // Reaching this point means the call authenticated successfully —
             // auto-clear the admin "OpenAI key check" banner (#76) so the
             // dashboard doesn't strand stale alerts after a key rotation.
-            OpenAiKeyHealth::clear();
+            OpenAiKeyHealth::clear($restaurant?->id);
 
             return $content !== '' ? $content : self::FALLBACK_TEXT;
         } catch (ErrorException $e) {
@@ -182,7 +182,7 @@ final class OpenAiReplyGenerator implements ReplyGenerator
 
             // Successful authenticated call — clear the admin "OpenAI key
             // check" banner (#76), mirroring `generate`.
-            OpenAiKeyHealth::clear();
+            OpenAiKeyHealth::clear($restaurant?->id);
 
             return $content;
         } catch (ErrorException $e) {

@@ -45,10 +45,10 @@ class OpenAi401AdminNotificationTest extends TestCase
 
     public function test_dashboard_surfaces_the_banner_for_owner_users(): void
     {
-        OpenAiKeyHealth::flagAsRejected();
-
         $restaurant = Restaurant::factory()->create();
         $owner = User::factory()->create(['restaurant_id' => $restaurant->id, 'role' => UserRole::Owner]);
+
+        OpenAiKeyHealth::flagAsRejected($restaurant->id);
 
         $this->actingAs($owner)
             ->get(route('dashboard'))

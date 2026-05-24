@@ -17,6 +17,6 @@ final class RecordOpenAiKeyRejected
 {
     public function handle(OpenAiAuthenticationFailed $event): void
     {
-        OpenAiKeyHealth::flagAsRejected();
+        OpenAiKeyHealth::flagAsRejected($event->restaurantId);
     }
 }
