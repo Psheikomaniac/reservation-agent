@@ -4,6 +4,7 @@ use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExportController;
 use App\Http\Controllers\GdprSelfServiceController;
+use App\Http\Controllers\Onboarding\AcceptInvitationController;
 use App\Http\Controllers\PublicReservationController;
 use App\Http\Controllers\QuickReservationController;
 use App\Http\Controllers\ReservationMessagesController;
@@ -19,6 +20,14 @@ use Inertia\Inertia;
 Route::get('/', function () {
     return Inertia::render('Welcome');
 })->name('home');
+
+// Tokenised invitation acceptance (owner + staff onboarding).
+Route::middleware('guest')->group(function () {
+    Route::get('onboarding/accept/{token}', [AcceptInvitationController::class, 'show'])
+        ->name('onboarding.accept');
+    Route::post('onboarding/accept/{token}', [AcceptInvitationController::class, 'store'])
+        ->name('onboarding.accept.store');
+});
 
 Route::get('dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth', 'verified'])
