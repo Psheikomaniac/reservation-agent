@@ -20,6 +20,7 @@ declare module 'ziggy-js' {
     "onboarding.tables.store": [],
     "onboarding.tonality.update": [],
     "onboarding.team.store": [],
+    "onboarding.pending": [],
     "dashboard": [],
     "analytics.index": [],
     "exports.store": [],
