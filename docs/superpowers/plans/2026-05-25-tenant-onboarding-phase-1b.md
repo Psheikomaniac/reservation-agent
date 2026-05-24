@@ -35,7 +35,7 @@
 **Modified**
 - `app/Models/Restaurant.php` — fillable + casts (encrypted `openai_api_key`, `smtp_password`) + `$hidden`.
 - `app/Support/OpenAiKeyHealth.php` — per-restaurant scope.
-- `app/Services/AI/OpenAiReplyGenerator.php` + `app/Contracts/AI/ReplyGenerator.php` (or wherever the interface lives) — resolve client per restaurant.
+- `app/Services/AI/OpenAiReplyGenerator.php` + `app/Services/AI/Contracts/ReplyGenerator.php` (interface, namespace `App\Services\AI\Contracts`) — resolve client per restaurant.
 - `app/Providers/AppServiceProvider.php` — bind `OpenAiClientFactory`; rewire generator.
 - `app/Jobs/GenerateReservationReplyJob.php` — pass restaurant to `generate`; flag/read key health per restaurant.
 - `app/Http/Controllers/PublicReservationController.php` — pass restaurant to `generateSync`.
@@ -425,7 +425,7 @@ use App\Models\Restaurant;
 use GuzzleHttp\Client as GuzzleClient;
 use OpenAI;
 use OpenAI\Contracts\ClientContract;
-use OpenAI\Exceptions\ApiKeyIsMissing;
+use OpenAI\Laravel\Exceptions\ApiKeyIsMissing;
 
 /**
  * Builds an OpenAI client for a given restaurant, using its own BYOK key when
@@ -504,7 +504,7 @@ git commit -m "Add OpenAiClientFactory with per-restaurant key + global fallback
 ### Task C2: Route the generator through the factory (per-restaurant client)
 
 **Files:**
-- Modify: `app/Contracts/AI/ReplyGenerator.php` (the interface — confirm path via `grep -rn "interface ReplyGenerator" app`)
+- Modify: `app/Services/AI/Contracts/ReplyGenerator.php` (the interface, namespace `App\Services\AI\Contracts`)
 - Modify: `app/Services/AI/OpenAiReplyGenerator.php`
 - Modify: `app/Providers/AppServiceProvider.php`
 - Modify: `app/Jobs/GenerateReservationReplyJob.php`, `app/Http/Controllers/PublicReservationController.php`
@@ -629,10 +629,10 @@ $body = $generator->generate($context, $request->restaurant);
 `PublicReservationController` sync path:
 
 ```php
-$body = app(OpenAiReplyGenerator::class)->generateSync($context, $reservation->restaurant, /* timeout */ 5);
+$body = app(OpenAiReplyGenerator::class)->generateSync($context, $reservation->restaurant, 5);
 ```
 
-(Use the timeout constant already present at that call site.)
+(The current call is `generateSync($context)` and relies on the `$timeout = 5` default; pass the restaurant as the new middle arg and keep `5` explicit.)
 
 - [ ] **Step 7: Update existing generator unit tests**
 
@@ -647,6 +647,8 @@ private function makeGenerator(ClientFake $fake): OpenAiReplyGenerator
     return new OpenAiReplyGenerator($factory, new NullLogger);
 }
 ```
+
+Also update the **second** direct construction at `tests/Unit/Services/AI/OpenAiReplyGeneratorTest.php:161` (`new OpenAiReplyGenerator($fake, ...)` outside `makeGenerator`) to use the same factory-stub shape, otherwise it won't compile after the constructor change.
 
 The feature-test stub generator (`tests/Feature/Jobs/GenerateReservationReplyJobTest.php`) must update its `generate` signature to `generate(array $context, ?Restaurant $restaurant = null): string`.
 
@@ -663,7 +665,7 @@ Expected: PASS (watch the sync path / PublicReservation tests).
 - [ ] **Step 10: Commit**
 
 ```bash
-git add app/Services/AI/OpenAiReplyGenerator.php app/Contracts app/Providers/AppServiceProvider.php app/Jobs/GenerateReservationReplyJob.php app/Http/Controllers/PublicReservationController.php tests/Unit/Services/AI/OpenAiReplyGeneratorTest.php tests/Feature/Jobs/GenerateReservationReplyJobTest.php tests/Feature/AI/ByokGenerationTest.php
+git add app/Services/AI/OpenAiReplyGenerator.php app/Services/AI/Contracts/ReplyGenerator.php app/Providers/AppServiceProvider.php app/Jobs/GenerateReservationReplyJob.php app/Http/Controllers/PublicReservationController.php tests/Unit/Services/AI/OpenAiReplyGeneratorTest.php tests/Feature/Jobs/GenerateReservationReplyJobTest.php tests/Feature/AI/ByokGenerationTest.php
 git commit -m "Route reply generation through OpenAiClientFactory per restaurant"
 ```
 
