@@ -5,6 +5,7 @@ use App\Http\Controllers\Settings\NotificationSettingsController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SendModeSettingsController;
+use App\Http\Controllers\Settings\SmtpSettingsController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -36,4 +37,9 @@ Route::middleware('auth')->group(function () {
         ->name('settings.ai-key.edit');
     Route::patch('settings/ai-key', [AiKeySettingsController::class, 'update'])
         ->name('settings.ai-key.update');
+
+    Route::get('settings/smtp', [SmtpSettingsController::class, 'edit'])
+        ->name('settings.smtp.edit');
+    Route::patch('settings/smtp', [SmtpSettingsController::class, 'update'])
+        ->name('settings.smtp.update');
 });
