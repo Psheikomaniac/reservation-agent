@@ -8,6 +8,7 @@ use App\Enums\MessageDirection;
 use App\Enums\ReservationReplyStatus;
 use App\Enums\ReservationStatus;
 use App\Mail\ReservationReplyMail;
+use App\Mail\Support\RestaurantMailer;
 use App\Models\ReservationMessage;
 use App\Models\ReservationReply;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -75,11 +76,22 @@ final class SendReservationReplyJob implements ShouldQueue
         }
 
         try {
+            $restaurant = $reservationRequest->restaurant;
+            $mailerSupport = app(RestaurantMailer::class);
+            $from = $mailerSupport->from($restaurant);
+
             $mail = new ReservationReplyMail($reply);
+            $mail->from($from['address'], $from['name']);
 
-            Mail::to($email)->send($mail);
+            // Per-restaurant SMTP when configured, else the default .env mailer.
+            $mailerName = $mailerSupport->resolve($restaurant);
+            if ($mailerName !== null) {
+                Mail::mailer($mailerName)->to($email)->send($mail);
+            } else {
+                Mail::to($email)->send($mail);
+            }
 
-            $fromAddress = (string) (config('mail.from.address') ?: 'noreply@localhost');
+            $fromAddress = $from['address'] !== '' ? $from['address'] : 'noreply@localhost';
             $subject = (string) $mail->envelope()->subject;
 
             ReservationMessage::create([
