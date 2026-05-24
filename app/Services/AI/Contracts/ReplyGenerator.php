@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\AI\Contracts;
 
+use App\Models\Restaurant;
+
 /**
  * Producer of a German reply text from a deterministic Context-JSON.
  *
@@ -22,6 +24,8 @@ interface ReplyGenerator
     /**
      * @param  array<string, mixed>  $context  the JSON produced by
      *                                         ReservationContextBuilder::build()
+     * @param  Restaurant|null  $restaurant  source of the per-restaurant BYOK
+     *                                       key; null uses the global key
      */
-    public function generate(array $context): string;
+    public function generate(array $context, ?Restaurant $restaurant = null): string;
 }

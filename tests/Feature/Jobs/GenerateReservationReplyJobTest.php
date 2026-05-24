@@ -42,7 +42,7 @@ class GenerateReservationReplyJobTest extends TestCase
         {
             public function __construct(private readonly string|RuntimeException $bodyOrError) {}
 
-            public function generate(array $context): string
+            public function generate(array $context, ?Restaurant $restaurant = null): string
             {
                 if ($this->bodyOrError instanceof RuntimeException) {
                     throw $this->bodyOrError;

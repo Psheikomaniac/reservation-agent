@@ -76,7 +76,7 @@ class GenerateReservationReplyJob implements ShouldQueue
             $generator = app(ReplyGenerator::class);
 
             $context = $builder->build($request);
-            $body = $generator->generate($context);
+            $body = $generator->generate($context, $request->restaurant);
 
             $reply = ReservationReply::create([
                 'reservation_request_id' => $request->id,
