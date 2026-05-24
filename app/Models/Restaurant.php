@@ -35,6 +35,7 @@ class Restaurant extends Model
         'capacity',
         'opening_hours',
         'tonality',
+        'onboarding_completed_at',
         'imap_host',
         'imap_username',
         'imap_password',
@@ -67,6 +68,7 @@ class Restaurant extends Model
             'capacity' => 'integer',
             'opening_hours' => 'array',
             'tonality' => Tonality::class,
+            'onboarding_completed_at' => 'datetime',
             'imap_password' => 'encrypted',
             'send_mode' => SendMode::class,
             'auto_send_party_size_max' => 'integer',
@@ -83,6 +85,30 @@ class Restaurant extends Model
     public function reservationRequests(): HasMany
     {
         return $this->hasMany(ReservationRequest::class);
+    }
+
+    /**
+     * @return HasMany<User, $this>
+     */
+    public function users(): HasMany
+    {
+        return $this->hasMany(User::class);
+    }
+
+    /**
+     * @return HasMany<Invitation, $this>
+     */
+    public function invitations(): HasMany
+    {
+        return $this->hasMany(Invitation::class);
+    }
+
+    /**
+     * A restaurant is "live" once the onboarding Pflicht-Kern is complete.
+     */
+    public function isLive(): bool
+    {
+        return $this->onboarding_completed_at !== null;
     }
 
     /**
