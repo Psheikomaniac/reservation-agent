@@ -52,6 +52,13 @@ final class OnboardingWizardTest extends TestCase
         $this->actingAs($staff)->get(route('onboarding.wizard'))->assertForbidden();
     }
 
+    public function test_a_user_without_a_restaurant_is_forbidden(): void
+    {
+        $orphan = User::factory()->create(['restaurant_id' => null]);
+
+        $this->actingAs($orphan)->get(route('onboarding.wizard'))->assertForbidden();
+    }
+
     public function test_owner_updates_restaurant_info(): void
     {
         [$owner, $restaurant] = $this->owner();
