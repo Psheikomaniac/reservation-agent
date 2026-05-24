@@ -12,6 +12,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -50,17 +51,26 @@ final class AcceptInvitationController extends Controller
             return redirect()->route('onboarding.accept', ['token' => $token]);
         }
 
+        // Owner invitations already have a provisioned (password-less) user;
+        // staff invitations create the user on acceptance. firstOrNew covers
+        // both, and the role always comes from the invitation.
+        $user = User::firstOrNew([
+            'restaurant_id' => $invitation->restaurant_id,
+            'email' => $invitation->email,
+        ]);
+
+        // An invitation must never reset the credentials of an already-active
+        // account — the only legitimate targets are a provisioned password-less
+        // owner or a brand-new staff user.
+        if ($user->exists && $user->password !== null) {
+            throw ValidationException::withMessages([
+                'email' => 'Dieses Konto ist bereits aktiv. Bitte melden Sie sich an.',
+            ]);
+        }
+
         $validated = $request->validated();
 
-        $user = DB::transaction(function () use ($invitation, $validated): User {
-            // Owner invitations already have a provisioned (password-less) user;
-            // staff invitations create the user on acceptance. firstOrNew covers
-            // both, and the role always comes from the invitation.
-            $user = User::firstOrNew([
-                'restaurant_id' => $invitation->restaurant_id,
-                'email' => $invitation->email,
-            ]);
-
+        DB::transaction(function () use ($invitation, $user, $validated): void {
             $user->forceFill([
                 'name' => $validated['name'],
                 'password' => Hash::make($validated['password']),
@@ -69,11 +79,12 @@ final class AcceptInvitationController extends Controller
             ])->save();
 
             $invitation->forceFill(['accepted_at' => now()])->save();
-
-            return $user;
         });
 
         Auth::login($user);
+        // Rotate the session id on login to close the session-fixation gap,
+        // matching AuthenticatedSessionController.
+        $request->session()->regenerate();
 
         return to_route('dashboard');
     }

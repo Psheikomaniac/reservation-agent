@@ -134,6 +134,33 @@ final class AcceptInvitationTest extends TestCase
             ->assertInertia(fn (AssertableInertia $page) => $page->component('Onboarding/InvitationError'));
     }
 
+    public function test_acceptance_never_overwrites_an_already_active_account(): void
+    {
+        $restaurant = Restaurant::factory()->onboarded()->create();
+        $active = User::factory()->forRestaurant($restaurant)->create([
+            'email' => 'active@example.test',
+            'password' => Hash::make('original-password'),
+        ]);
+        $plain = Invitation::generateToken();
+        Invitation::factory()->for($restaurant)->create([
+            'email' => 'active@example.test',
+            'token' => Invitation::hashToken($plain),
+        ]);
+
+        $this->from(route('onboarding.accept', ['token' => $plain]))
+            ->post(route('onboarding.accept.store', ['token' => $plain]), [
+                'name' => 'Hijacker',
+                'password' => 'new-evil-password',
+                'password_confirmation' => 'new-evil-password',
+            ])
+            ->assertSessionHasErrors('email');
+
+        $active->refresh();
+        $this->assertTrue(Hash::check('original-password', $active->password));
+        $this->assertSame('active@example.test', $active->email);
+        $this->assertGuest();
+    }
+
     public function test_validation_errors_are_returned(): void
     {
         [$plain] = $this->ownerInvitation();
