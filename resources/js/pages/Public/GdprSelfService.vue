@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import InputError from '@/components/InputError.vue';
+import StatusBadge from '@/components/StatusBadge.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import PublicLayout from '@/layouts/PublicLayout.vue';
 import { formatDateTime } from '@/lib/format-datetime';
+import { type ReservationStatus } from '@/lib/reservationStatus';
 import { Head, useForm } from '@inertiajs/vue3';
 import { computed } from 'vue';
 
@@ -25,17 +27,6 @@ const props = defineProps<{
     };
     deleteToken: string;
 }>();
-
-const STATUS_LABELS: Record<string, string> = {
-    new: 'Neu',
-    in_review: 'In Prüfung',
-    replied: 'Beantwortet',
-    confirmed: 'Bestätigt',
-    declined: 'Abgelehnt',
-    waitlisted: 'Warteliste',
-};
-
-const statusLabel = computed(() => STATUS_LABELS[props.reservation.status] ?? props.reservation.status);
 
 const localDateTime = (iso: string | null): string => (iso ? formatDateTime(iso, { timeZone: props.restaurant.timezone }) : '–');
 
@@ -68,7 +59,7 @@ const submitDelete = () => {
             </div>
             <div class="flex justify-between gap-4">
                 <dt class="text-muted-foreground">Status</dt>
-                <dd class="font-medium">{{ statusLabel }}</dd>
+                <dd><StatusBadge :status="reservation.status as ReservationStatus" /></dd>
             </div>
         </dl>
 
