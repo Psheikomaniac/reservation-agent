@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import DashboardExportDropdown from '@/components/DashboardExportDropdown.vue';
 import InputError from '@/components/InputError.vue';
+import OnboardingReminders from '@/components/OnboardingReminders.vue';
 import ReservationThreadHistory from '@/components/ReservationThreadHistory.vue';
 import StatusBadge from '@/components/StatusBadge.vue';
 import WaitlistBanner from '@/components/WaitlistBanner.vue';
@@ -47,6 +48,7 @@ interface DashboardProps {
     waitlistBanner: ReservationRequestRow[];
     openaiKeyRejectedAt?: string | null;
     sendMode?: 'manual' | 'shadow' | 'auto' | null;
+    onboardingReminders?: ('tonality' | 'team')[];
 }
 
 const props = defineProps<DashboardProps>();
@@ -582,6 +584,8 @@ useReservationDiffTrigger(dashboardRowIds, dashboardFilters, notifications);
                     </div>
                 </div>
             </header>
+
+            <OnboardingReminders :reminders="props.onboardingReminders ?? []" />
 
             <WaitlistBanner :banner="props.waitlistBanner" :timezone="restaurantTimezone" @open="openReservation" />
 
