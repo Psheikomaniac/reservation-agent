@@ -137,7 +137,7 @@ Replace the badge span (the `<span ... :class="STATUS_BADGE_CLASS[row.status]">{
 
 - [ ] **Step 3: Remove dead code**
 
-Delete the `STATUS_BADGE_CLASS` map (lines ~97–105). Delete `STATUS_LABEL` (lines ~107–110) **only if** Step 1 showed it's now unused; otherwise leave it. Leave `STATUS_OPTIONS`.
+Delete the `STATUS_BADGE_CLASS` map (lines ~97–105). **Keep `STATUS_LABEL`** — it is still used by the drawer (`STATUS_LABEL[props.selectedRequest.status]`, ~line 838), and keep `STATUS_OPTIONS` (filter chips, ~line 605). Only `STATUS_BADGE_CLASS` becomes dead.
 
 - [ ] **Step 4: Verify build + lint + the existing reservationStatus test**
 
@@ -168,7 +168,9 @@ git commit -m "Dashboard: render statuses via shared StatusBadge"
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 
-(globalThis as unknown as { route: () => string }).route = () => '/onboarding';
+// Ziggy route() global — vi.stubGlobal matches the repo convention
+// (see Tables.test.ts / Notifications.component.test.ts).
+vi.stubGlobal('route', () => '/onboarding');
 
 import OnboardingReminders from './OnboardingReminders.vue';
 
@@ -372,7 +374,9 @@ git commit -m "Public GDPR page: shared StatusBadge for status display"
 
 # Final verification
 
-- [ ] **Step 1: Frontend** — `npm run test && npm run build && npm run lint:check && npm run format:check` all green.
+> **CI gap (important):** the CI frontend job runs only ESLint + Prettier + `vite build` — it does **not** run Vitest and `vite build` does **not** type-check. So green CI does NOT prove the new component tests pass or that types are sound. Run `npm run test` locally as the real gate for the StatusBadge/OnboardingReminders/AppSidebarHeader tests, and watch for type issues by hand (e.g. the `as ReservationStatus` cast in E1).
+
+- [ ] **Step 1: Frontend** — `npm run test && npm run build && npm run lint:check && npm run format:check` all green **locally** (Vitest is local-only; CI won't catch a red Vitest).
 - [ ] **Step 2: Backend regression** — `php artisan test` (no backend changed, but Inertia component-name assertions for Dashboard/public pages must still hold) + `./vendor/bin/pint --test`.
 - [ ] **Step 3: Visual review (manual, recommended)** — log in (dark topbar + status pills + reminder card on the dashboard), open the public GDPR self-service link (token status pill). Confirm direction-C consistency and no layout regressions.
 
