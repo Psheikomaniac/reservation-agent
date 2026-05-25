@@ -2,6 +2,7 @@
 import DashboardExportDropdown from '@/components/DashboardExportDropdown.vue';
 import InputError from '@/components/InputError.vue';
 import ReservationThreadHistory from '@/components/ReservationThreadHistory.vue';
+import StatusBadge from '@/components/StatusBadge.vue';
 import WaitlistBanner from '@/components/WaitlistBanner.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -93,16 +94,6 @@ const SOURCE_OPTIONS: { value: ReservationSource; label: string }[] = [
     { value: 'web_form', label: 'Webformular' },
     { value: 'email', label: 'E-Mail' },
 ];
-
-const STATUS_BADGE_CLASS: Record<ReservationStatus, string> = {
-    new: 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-200',
-    in_review: 'bg-indigo-100 text-indigo-900 dark:bg-indigo-900/40 dark:text-indigo-200',
-    replied: 'bg-purple-100 text-purple-900 dark:bg-purple-900/40 dark:text-purple-200',
-    confirmed: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200',
-    declined: 'bg-rose-100 text-rose-900 dark:bg-rose-900/40 dark:text-rose-200',
-    cancelled: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
-    waitlisted: 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200',
-};
 
 const STATUS_LABEL: Record<ReservationStatus, string> = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.value, s.label])) as Record<
     ReservationStatus,
@@ -741,12 +732,7 @@ useReservationDiffTrigger(dashboardRowIds, dashboardFilters, notifications);
                             <td class="px-3 py-2 text-xs text-muted-foreground">{{ SOURCE_LABEL[row.source] }}</td>
                             <td class="px-3 py-2">
                                 <div class="flex flex-wrap items-center gap-1.5">
-                                    <span
-                                        class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-                                        :class="STATUS_BADGE_CLASS[row.status]"
-                                    >
-                                        {{ STATUS_LABEL[row.status] }}
-                                    </span>
+                                    <StatusBadge :status="row.status" />
                                     <span
                                         v-if="row.needs_manual_review"
                                         data-testid="needs-review-chip"
