@@ -113,7 +113,11 @@ Middleware (z. B. `EnsureOnboardingComplete`) auf den authentifizierten App-Rout
 
 - **Phase 1:** Tokens + Onboarding (Command, Invitation, Wizard Pflicht-Kern + Tonalität + Team) im C-Look.
 - **Phase 1b:** per-Restaurant BYOK + SMTP-Versand. **Eigenes Epic mit eigenen Akzeptanzkriterien** — pilot-optional, blockiert Phase 1/2 nicht (global bleibt nutzbar).
-- **Phase 2:** Restyle Dashboard + öffentliche Reservierungs-/Bestätigungsseiten.
+- **Phase 2:** Fokussierter Restyle in Richtung C (token-vereinheitlichend, mechanisch — kein tiefer Layout-Umbau):
+  - Wiederverwendbare `StatusBadge.vue` (konsumiert `reservationStatus.ts`); Dashboard ersetzt die hartcodierte `STATUS_BADGE_CLASS`/`STATUS_LABEL`-Map dadurch.
+  - **Dunkle Topbar** im eingeloggten App-Shell (`AppSidebarHeader` → `bg-topbar`/`text-topbar-foreground`); die öffentliche zentrierte Karte (`PublicLayout`) bleibt, bekommt aber denselben `StatusBadge` für Status-Anzeige (GDPR-Self-Service, Sync-Bestätigung).
+  - Onboarding-**Erinnerungs-Karten** im Dashboard (rendern den `onboardingReminders`-Prop aus Phase 1; verschwinden, sobald der optionale Schritt erledigt ist).
+  - Keine funktionale Regression; Dichte-/Spacing-Feintuning per visueller Kontrolle.
 
 ---
 
