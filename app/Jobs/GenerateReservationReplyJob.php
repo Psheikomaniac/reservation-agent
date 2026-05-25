@@ -76,7 +76,7 @@ class GenerateReservationReplyJob implements ShouldQueue
             $generator = app(ReplyGenerator::class);
 
             $context = $builder->build($request);
-            $body = $generator->generate($context);
+            $body = $generator->generate($context, $request->restaurant);
 
             $reply = ReservationReply::create([
                 'reservation_request_id' => $request->id,
@@ -100,7 +100,7 @@ class GenerateReservationReplyJob implements ShouldQueue
             // 401 → admin notification, no retry. Always fall straight
             // through to the fallback path so the dashboard still has
             // something to show.
-            OpenAiAuthenticationFailed::dispatch();
+            OpenAiAuthenticationFailed::dispatch($request->restaurant_id);
 
             $this->storeFallbackDraft($request, $context, $logger, '401 authentication failed');
         } catch (Throwable $e) {

@@ -215,7 +215,7 @@ class ReservationReplyFlowTest extends TestCase
         {
             public function __construct(private readonly \Throwable $error) {}
 
-            public function generate(array $context): string
+            public function generate(array $context, ?Restaurant $restaurant = null): string
             {
                 throw $this->error;
             }

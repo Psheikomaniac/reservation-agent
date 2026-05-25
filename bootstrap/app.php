@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureOnboardingComplete;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\WarnOnAppUrlMismatch;
 use Illuminate\Foundation\Application;
@@ -20,6 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
             WarnOnAppUrlMismatch::class,
+            EnsureOnboardingComplete::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

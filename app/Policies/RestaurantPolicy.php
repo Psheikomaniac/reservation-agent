@@ -37,4 +37,14 @@ final class RestaurantPolicy
         return $user->restaurant_id === $restaurant->id
             && $user->role === UserRole::Owner;
     }
+
+    /**
+     * Per-restaurant integration secrets (OpenAI BYOK, SMTP, IMAP) are
+     * owner-only (PRD-016 Phase 1b).
+     */
+    public function manageIntegrations(User $user, Restaurant $restaurant): bool
+    {
+        return $user->restaurant_id === $restaurant->id
+            && $user->role === UserRole::Owner;
+    }
 }

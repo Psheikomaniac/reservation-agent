@@ -34,7 +34,7 @@ Status-Übergänge (new→replied→...)       Auf Deutsch, höflich, eindeutig
 |-----------------|------------------------------------------|
 | Backend         | PHP 8.2+, Laravel 12                     |
 | Frontend        | Inertia.js v2, Vue 3.5, TypeScript       |
-| Styling         | Tailwind CSS v4, Reka UI                 |
+| Styling         | Tailwind CSS v3.4, Reka UI               |
 | Routing (FE)    | Ziggy (`route()`-Helper in Vue)          |
 | DB              | SQLite (lokal), MySQL/Postgres (Prod)    |
 | Queue           | `database`-Driver lokal, `sync` in Tests |

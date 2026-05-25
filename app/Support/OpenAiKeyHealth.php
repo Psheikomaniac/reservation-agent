@@ -35,20 +35,29 @@ final class OpenAiKeyHealth
 
     private const int RETENTION_SECONDS = 7 * 24 * 60 * 60;
 
-    public static function flagAsRejected(): void
+    public static function flagAsRejected(?int $restaurantId = null): void
     {
-        Cache::put(self::CACHE_KEY, now()->toIso8601String(), self::RETENTION_SECONDS);
+        Cache::put(self::cacheKey($restaurantId), now()->toIso8601String(), self::RETENTION_SECONDS);
     }
 
-    public static function clear(): void
+    public static function clear(?int $restaurantId = null): void
     {
-        Cache::forget(self::CACHE_KEY);
+        Cache::forget(self::cacheKey($restaurantId));
     }
 
-    public static function rejectedAt(): ?string
+    public static function rejectedAt(?int $restaurantId = null): ?string
     {
-        $value = Cache::get(self::CACHE_KEY);
+        $value = Cache::get(self::cacheKey($restaurantId));
 
         return is_string($value) ? $value : null;
+    }
+
+    /**
+     * Per-restaurant scope (PRD-016 Phase 1b BYOK): a rejected restaurant key
+     * flags only that restaurant; the global key keeps the `global` scope.
+     */
+    private static function cacheKey(?int $restaurantId): string
+    {
+        return self::CACHE_KEY.'.'.($restaurantId ?? 'global');
     }
 }

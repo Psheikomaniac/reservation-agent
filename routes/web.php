@@ -4,6 +4,8 @@ use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExportController;
 use App\Http\Controllers\GdprSelfServiceController;
+use App\Http\Controllers\Onboarding\AcceptInvitationController;
+use App\Http\Controllers\Onboarding\OnboardingWizardController;
 use App\Http\Controllers\PublicReservationController;
 use App\Http\Controllers\QuickReservationController;
 use App\Http\Controllers\ReservationMessagesController;
@@ -19,6 +21,29 @@ use Inertia\Inertia;
 Route::get('/', function () {
     return Inertia::render('Welcome');
 })->name('home');
+
+// Tokenised invitation acceptance (owner + staff onboarding).
+Route::middleware('guest')->group(function () {
+    Route::get('onboarding/accept/{token}', [AcceptInvitationController::class, 'show'])
+        ->name('onboarding.accept');
+    Route::post('onboarding/accept/{token}', [AcceptInvitationController::class, 'store'])
+        ->name('onboarding.accept.store');
+});
+
+// Owner onboarding wizard (server-driven, one action per step).
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('onboarding', [OnboardingWizardController::class, 'show'])->name('onboarding.wizard');
+    Route::patch('onboarding/restaurant', [OnboardingWizardController::class, 'updateRestaurant'])->name('onboarding.restaurant.update');
+    Route::patch('onboarding/hours', [OnboardingWizardController::class, 'updateHours'])->name('onboarding.hours.update');
+    Route::post('onboarding/tables', [OnboardingWizardController::class, 'storeTable'])->name('onboarding.tables.store');
+    Route::patch('onboarding/tonality', [OnboardingWizardController::class, 'updateTonality'])->name('onboarding.tonality.update');
+    Route::post('onboarding/team', [OnboardingWizardController::class, 'storeStaffInvite'])->name('onboarding.team.store');
+});
+
+// Placeholder for staff of a restaurant whose owner has not finished onboarding.
+Route::get('onboarding/pending', fn () => Inertia::render('Onboarding/Pending'))
+    ->middleware('auth')
+    ->name('onboarding.pending');
 
 Route::get('dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth', 'verified'])

@@ -12,6 +12,7 @@ use App\Http\Resources\ReservationRequestDetailResource;
 use App\Http\Resources\ReservationRequestResource;
 use App\Models\ReservationRequest;
 use App\Services\Waitlist\WaitlistBanner;
+use App\Support\OnboardingProgress;
 use App\Support\OpenAiKeyHealth;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
@@ -25,7 +26,8 @@ final class DashboardController extends Controller
     {
         $validated = $request->validated();
         $selectedId = isset($validated['selected']) ? (int) $validated['selected'] : null;
-        $restaurantId = $request->user()?->restaurant_id;
+        $restaurant = $request->user()?->restaurant;
+        $restaurantId = $restaurant?->id;
 
         $filterQuery = Arr::except($request->query(), ['selected']);
         $filters = $filterQuery === []
@@ -60,17 +62,24 @@ final class DashboardController extends Controller
                 : ReservationRequestResource::collection($waitlistBanner->eligibleNow($restaurantId))->resolve($request),
             'selectedRequest' => fn () => $this->resolveSelected($selectedId, $request),
             'threadMessages' => fn () => $this->resolveThreadMessages($selectedId, $request),
-            // Owner-only banner. The flag is global (V1.0 has one OpenAI key
-            // app-wide); dismissing-by-user is intentionally NOT supported
-            // (issue #76) so a stale alert can't outlive a still-broken key.
+            // Owner-only banner. Scoped to this restaurant's key (PRD-016 Phase
+            // 1b BYOK); a rejected restaurant key surfaces only to its owner.
+            // Dismissing-by-user is intentionally NOT supported (issue #76) so a
+            // stale alert can't outlive a still-broken key.
             'openaiKeyRejectedAt' => $request->user()?->role === UserRole::Owner
-                ? OpenAiKeyHealth::rejectedAt()
+                ? OpenAiKeyHealth::rejectedAt($restaurantId)
                 : null,
             // PRD-007 mode banner. Surfaces the active send-mode at the
             // top of the dashboard whenever it deviates from the V1.0
             // default — so the operator always sees that auto-send is
             // armed and where to flip the killswitch.
             'sendMode' => $request->user()?->restaurant?->send_mode->value,
+            // PRD-016: optional onboarding steps the owner skipped (e.g. team),
+            // surfaced as dismissible reminder cards. Empty when none / no
+            // restaurant. Refreshed by the existing dashboard poll.
+            'onboardingReminders' => $restaurant !== null
+                ? OnboardingProgress::for($restaurant)->pendingOptionalSteps()
+                : [],
         ]);
     }
 

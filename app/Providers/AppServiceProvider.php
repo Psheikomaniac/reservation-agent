@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Services\AI\Contracts\ReplyGenerator;
+use App\Services\AI\OpenAiClientFactory;
 use App\Services\AI\OpenAiReplyGenerator;
 use App\Services\Email\Contracts\ImapMailboxFactory;
 use App\Services\Email\WebklexImapMailboxFactory;
@@ -23,15 +24,17 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->bind(ImapMailboxFactory::class, WebklexImapMailboxFactory::class);
         $this->app->bind(ExportGenerator::class, FormatRoutingExportGenerator::class);
+        $this->app->singleton(OpenAiClientFactory::class);
 
-        // The generator needs two timeout regimes: the default 30 s client
-        // for the async job (`generate`), and a short-budget client for the
-        // PRD-014 sync-confirm path (`generateSync`). The factory builds the
-        // latter on demand with the requested timeout.
+        // Default client uses the global key (and is the BYOK fallback); the
+        // sync closure builds a timeout-bounded global client (PRD-014); the
+        // OpenAiClientFactory builds a per-restaurant client when a restaurant
+        // brought its own key (PRD-016 Phase 1b).
         $this->app->bind(OpenAiReplyGenerator::class, fn ($app): OpenAiReplyGenerator => new OpenAiReplyGenerator(
             $app->make(ClientContract::class),
             $app->make(LoggerInterface::class),
             fn (int $timeout): ClientContract => $this->buildTimeoutBoundOpenAiClient($timeout),
+            $app->make(OpenAiClientFactory::class),
         ));
         $this->app->bind(ReplyGenerator::class, OpenAiReplyGenerator::class);
     }

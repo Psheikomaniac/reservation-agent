@@ -56,4 +56,14 @@ class UserFactory extends Factory
             'restaurant_id' => $restaurant->id,
         ]);
     }
+
+    /**
+     * Indicate that the user is the restaurant owner.
+     */
+    public function owner(): static
+    {
+        return $this->state(fn () => [
+            'role' => UserRole::Owner,
+        ]);
+    }
 }

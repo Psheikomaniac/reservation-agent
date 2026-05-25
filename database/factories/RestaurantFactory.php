@@ -41,6 +41,31 @@ class RestaurantFactory extends Factory
             'imap_host' => null,
             'imap_username' => null,
             'imap_password' => null,
+            // Test restaurants are operational by default; onboarding tests opt
+            // into the pre-live state explicitly via pendingOnboarding().
+            'onboarding_completed_at' => now(),
         ];
+    }
+
+    /**
+     * A restaurant that has completed onboarding (is "live").
+     */
+    public function onboarded(): static
+    {
+        return $this->state(fn () => [
+            'onboarding_completed_at' => now(),
+        ]);
+    }
+
+    /**
+     * A freshly provisioned restaurant before the wizard: no opening hours,
+     * not yet live.
+     */
+    public function pendingOnboarding(): static
+    {
+        return $this->state(fn () => [
+            'onboarding_completed_at' => null,
+            'opening_hours' => [],
+        ]);
     }
 }

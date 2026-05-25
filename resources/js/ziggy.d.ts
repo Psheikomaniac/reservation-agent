@@ -2,6 +2,25 @@
 declare module 'ziggy-js' {
   interface RouteList {
     "home": [],
+    "onboarding.accept": [
+        {
+            "name": "token",
+            "required": true
+        }
+    ],
+    "onboarding.accept.store": [
+        {
+            "name": "token",
+            "required": true
+        }
+    ],
+    "onboarding.wizard": [],
+    "onboarding.restaurant.update": [],
+    "onboarding.hours.update": [],
+    "onboarding.tables.store": [],
+    "onboarding.tonality.update": [],
+    "onboarding.team.store": [],
+    "onboarding.pending": [],
     "dashboard": [],
     "analytics.index": [],
     "exports.store": [],
@@ -117,6 +136,12 @@ declare module 'ziggy-js' {
     "settings.send-mode.update": [],
     "settings.notifications.edit": [],
     "settings.notifications.update": [],
+    "settings.ai-key.edit": [],
+    "settings.ai-key.update": [],
+    "settings.smtp.edit": [],
+    "settings.smtp.update": [],
+    "settings.imap.edit": [],
+    "settings.imap.update": [],
     "register": [],
     "login": [],
     "password.request": [],

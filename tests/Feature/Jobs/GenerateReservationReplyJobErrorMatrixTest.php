@@ -50,7 +50,7 @@ class GenerateReservationReplyJobErrorMatrixTest extends TestCase
         {
             public function __construct(private readonly \Throwable $error) {}
 
-            public function generate(array $context): string
+            public function generate(array $context, ?Restaurant $restaurant = null): string
             {
                 throw $this->error;
             }
@@ -161,7 +161,7 @@ class GenerateReservationReplyJobErrorMatrixTest extends TestCase
         $request = $this->makeRequest();
         $this->app->bind(ReplyGenerator::class, fn () => new class implements ReplyGenerator
         {
-            public function generate(array $context): string
+            public function generate(array $context, ?Restaurant $restaurant = null): string
             {
                 return 'Generierter Antworttext.';
             }
