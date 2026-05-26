@@ -11,7 +11,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useCountdown } from '@/composables/useCountdown';
 import { useNotifications } from '@/composables/useNotifications';
 import { usePagePolling } from '@/composables/usePagePolling';
@@ -792,31 +791,6 @@ useReservationDiffTrigger(dashboardRowIds, dashboardFilters, notifications);
                     </Link>
                 </div>
             </nav>
-
-            <TooltipProvider :delay-duration="150">
-                <Tooltip>
-                    <TooltipTrigger as-child>
-                        <aside
-                            data-testid="known-limitation-threading"
-                            class="flex cursor-help items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-left text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200"
-                        >
-                            <Info class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                            <div>
-                                <p class="font-medium">Hinweis V1.0: Antworten des Gastes erzeugen eine neue Anfrage</p>
-                                <p class="mt-1 text-amber-900/80 dark:text-amber-200/80">
-                                    Wenn ein Gast auf eine versendete Bestätigung antwortet, erscheint die Antwort aktuell als neue
-                                    Reservierungsanfrage. Automatisches Threading folgt in V2.0 – bis dahin bitte Einträge manuell zusammenführen.
-                                </p>
-                            </div>
-                        </aside>
-                    </TooltipTrigger>
-                    <TooltipContent class="max-w-sm text-xs leading-relaxed">
-                        In V1.0 akzeptieren wir Dubletten im Dashboard und verlassen uns auf manuellen Merge durch den Gastronom. Threading (Zuordnung
-                        späterer Mails zur ursprünglichen Reservierung) ist für V2.0 geplant. Details: docs/PRD-003-email-ingestion.md § Risiken &amp;
-                        offene Fragen.
-                    </TooltipContent>
-                </Tooltip>
-            </TooltipProvider>
         </div>
 
         <Sheet v-model:open="drawerOpen">
