@@ -37,8 +37,24 @@ const active = ref<OnboardingStep>(props.progress.nextCoreStep ?? 'tonality');
 
 const goTo = (step: OnboardingStep) => (active.value = step);
 
-// Re-fetch derived progress + restaurant/tables after each step save.
-const onSaved = () => router.reload({ only: ['progress', 'restaurant', 'tables'] });
+// Steps where saving is a single "done with this step" action: auto-advance to
+// the next step in ORDER. Tische / Team stay because the user may add several
+// (a new table, more invitees) and would not want each save to navigate away.
+const STAYS_ON_SAVE: Set<OnboardingStep> = new Set(['tables', 'team']);
+
+// Re-fetch derived progress + restaurant/tables after each step save, and
+// advance to the next step where it makes sense.
+const onSaved = () => {
+    router.reload({ only: ['progress', 'restaurant', 'tables'] });
+
+    if (!STAYS_ON_SAVE.has(active.value)) {
+        const index = ORDER.findIndex((step) => step.key === active.value);
+        const next = ORDER[index + 1]?.key;
+        if (next) {
+            active.value = next;
+        }
+    }
+};
 </script>
 
 <template>
