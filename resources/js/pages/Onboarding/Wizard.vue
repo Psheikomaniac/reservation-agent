@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import OnboardingLayout from '@/layouts/OnboardingLayout.vue';
 import type { OnboardingProgress, OnboardingStep } from '@/types';
-import { Head, router } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import StepOpeningHours from './steps/StepOpeningHours.vue';
 import StepRestaurantInfo from './steps/StepRestaurantInfo.vue';
@@ -74,9 +74,13 @@ const onSaved = () => {
             </button>
         </nav>
 
-        <p v-if="progress.coreComplete" class="mb-4 text-sm font-medium text-status-confirmed">
-            Pflichtangaben vollständig — Ihr Restaurant ist live.
-        </p>
+        <div
+            v-if="progress.coreComplete"
+            class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-status-confirmed/40 bg-status-confirmed/10 px-3 py-2"
+        >
+            <p class="text-sm font-medium text-status-confirmed">Pflichtangaben vollständig — Ihr Restaurant ist live.</p>
+            <Link :href="route('dashboard')" class="text-sm font-medium underline">Zum Dashboard →</Link>
+        </div>
 
         <StepRestaurantInfo v-if="active === 'restaurant'" :restaurant="restaurant" @saved="onSaved" />
         <StepOpeningHours v-else-if="active === 'hours'" :opening-hours="restaurant.opening_hours" @saved="onSaved" />
